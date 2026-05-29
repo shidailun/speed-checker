@@ -363,7 +363,7 @@ export default function App() {
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
-        { shouldPlay: true, rate: speedRef.current, shouldCorrectPitch: false, volume: 1.0 },
+        { shouldPlay: true, rate: speedRef.current, shouldCorrectPitch: false, volume: 1.0, progressUpdateIntervalMillis: 50 },
         (s) => {
           if (!s.isLoaded) return;
           if (s.didJustFinish) setPlaying(false);
@@ -689,13 +689,43 @@ export default function App() {
 
   const onCutInTextChange = (t: string) => {
     setCutInText(t);
-    const ms = parseFloat(t) * 1000;
+    const ms = parseFloat(t.replace(',', '.')) * 1000;
     if (!isNaN(ms) && ms >= 0) setCutIn(ms);
   };
   const onCutOutTextChange = (t: string) => {
     setCutOutText(t);
-    const ms = parseFloat(t) * 1000;
+    const ms = parseFloat(t.replace(',', '.')) * 1000;
     if (!isNaN(ms) && ms >= 0) setCutOut(ms);
+  };
+
+  const nudgeHoldTimeout  = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const nudgeHoldInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const applyNudge = (which: 'in' | 'out', delta: number) => {
+    if (which === 'in') {
+      setCutIn(prev => {
+        const next = Math.max(0, (prev ?? 0) + delta);
+        setCutInText((next / 1000).toFixed(2));
+        return next;
+      });
+    } else {
+      setCutOut(prev => {
+        const next = Math.max(0, (prev ?? 0) + delta);
+        setCutOutText((next / 1000).toFixed(2));
+        return next;
+      });
+    }
+  };
+
+  const startNudgeHold = (which: 'in' | 'out', delta: number) => {
+    applyNudge(which, delta);
+    nudgeHoldTimeout.current = setTimeout(() => {
+      nudgeHoldInterval.current = setInterval(() => applyNudge(which, delta), 80);
+    }, 350);
+  };
+  const stopNudgeHold = () => {
+    if (nudgeHoldTimeout.current)  { clearTimeout(nudgeHoldTimeout.current);   nudgeHoldTimeout.current  = null; }
+    if (nudgeHoldInterval.current) { clearInterval(nudgeHoldInterval.current); nudgeHoldInterval.current = null; }
   };
 
   const doCutAudio = async () => {
@@ -1012,25 +1042,25 @@ export default function App() {
               <TouchableOpacity style={[s.cutMarkBtn, cutIn !== null && { backgroundColor: C.red }]} onPress={markIn}>
                 <Text style={s.cutMarkText}>● In</Text>
               </TouchableOpacity>
-              <TextInput
-                style={s.cutTimeInput}
-                value={cutInText}
-                onChangeText={onCutInTextChange}
-                keyboardType="decimal-pad"
-                placeholder="sec"
-                placeholderTextColor={C.muted}
-              />
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('in', -50)} onPressOut={stopNudgeHold}>
+                <Text style={s.nudgeBtnText}>◀</Text>
+              </TouchableOpacity>
+              <TextInput style={s.cutTimeInput} value={cutInText} onChangeText={onCutInTextChange}
+                keyboardType="decimal-pad" placeholder="sec" placeholderTextColor={C.muted} />
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('in', 50)} onPressOut={stopNudgeHold}>
+                <Text style={s.nudgeBtnText}>▶</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[s.cutMarkBtn, cutOut !== null && { backgroundColor: C.red }]} onPress={markOut}>
                 <Text style={s.cutMarkText}>● Out</Text>
               </TouchableOpacity>
-              <TextInput
-                style={s.cutTimeInput}
-                value={cutOutText}
-                onChangeText={onCutOutTextChange}
-                keyboardType="decimal-pad"
-                placeholder="sec"
-                placeholderTextColor={C.muted}
-              />
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('out', -50)} onPressOut={stopNudgeHold}>
+                <Text style={s.nudgeBtnText}>◀</Text>
+              </TouchableOpacity>
+              <TextInput style={s.cutTimeInput} value={cutOutText} onChangeText={onCutOutTextChange}
+                keyboardType="decimal-pad" placeholder="sec" placeholderTextColor={C.muted} />
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('out', 50)} onPressOut={stopNudgeHold}>
+                <Text style={s.nudgeBtnText}>▶</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[s.cutPreviewBtn, !canAct && { opacity: 0.35 }]}
                 onPress={() => playCurrentEntry(undefined, undefined, undefined, true)}>
                 <Text style={s.cutMarkText}>▶ Preview</Text>
@@ -1360,7 +1390,9 @@ const s = StyleSheet.create({
   aboutBtn:      { width: 44, height: 52, backgroundColor: C.surface, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   aboutBtnText:  { color: C.muted, fontSize: 18, fontWeight: '700' },
   aboutText:     { color: C.text, fontSize: 14, lineHeight: 22 },
-  cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
+  nudgeBtn:      { width: 28, height: 44, backgroundColor: C.surface, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  nudgeBtnText:  { color: C.muted, fontSize: 12 },
   cutMarkBtn:    { height: 44, paddingHorizontal: 8, backgroundColor: '#b71c1c', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   cutTimeInput:  { width: 54, height: 44, backgroundColor: C.bg, color: C.text, borderRadius: 8, paddingHorizontal: 6, fontSize: 13, textAlign: 'center', borderWidth: 1, borderColor: C.red },
   cutPreviewBtn: { flex: 1, height: 44, paddingHorizontal: 6, backgroundColor: '#01579b', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
