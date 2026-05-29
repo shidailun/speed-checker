@@ -175,7 +175,7 @@ export default function App() {
   const cutPreviewRef        = useRef(false);
   const cutInRef             = useRef<number | null>(null);
   const cutOutRef            = useRef<number | null>(null);
-  const zoomWidthRef         = useRef(1);
+  const cutUndoRef           = useRef<{ globalIdx: number; oldFilename: string } | null>(null);
 
   const navRef = useRef({ goNext: () => {}, goPrev: () => {} });
   const swipeResponder = useRef(
@@ -793,11 +793,10 @@ export default function App() {
         if (!folderUri) throw new Error('Audio folder not set — re-pick the audio folder.');
         const newFileUri = await LegacyFS.StorageAccessFramework.createFileAsync(folderUri, saveName, 'audio/wav');
         await LegacyFS.StorageAccessFramework.writeAsStringAsync(newFileUri, b64, { encoding: LegacyFS.EncodingType.Base64 });
-        // Register new file in audioMap
         audioMapRef.current[saveName.toLowerCase()] = newFileUri;
-        // Update spreadsheet entry to point to the new file
+        cutUndoRef.current = { globalIdx: i, oldFilename: entry.filename };
         await persistFilename(i, saveName);
-        setStatus(`Saved as ${saveName} ✓`);
+        setStatus(`Saved as ${saveName} ✓  (↩ to undo)`);
       }
 
       addLog(`✂ ${entry.filename} → ${saveName}: removed ${fmtTime(cutOut - cutIn)} @ ${fmtTime(cutIn)}`);
@@ -877,6 +876,17 @@ export default function App() {
   };
 
   const applyUndo = async () => {
+    // Cut undo takes priority if available
+    const cutSnap = cutUndoRef.current;
+    if (cutSnap) {
+      cutUndoRef.current = null;
+      delete audioMapRef.current[entriesRef.current[cutSnap.globalIdx]?.filename.toLowerCase() ?? ''];
+      await persistFilename(cutSnap.globalIdx, cutSnap.oldFilename);
+      setStatus(`Cut undone — reverted to ${cutSnap.oldFilename} ✓`);
+      addLog(`Undo cut: restored ${cutSnap.oldFilename}`);
+      await playCurrentEntry();
+      return;
+    }
     const snap = undoRef.current;
     const wb   = workbookRef.current;
     const sheet = curSheetRef.current;
@@ -1037,12 +1047,6 @@ export default function App() {
       </View>
 
       {cutMode && hasEntries && (() => {
-        const ZOOM_MS = 4000;
-        const zc = cutIn !== null && cutOut !== null ? (cutIn + cutOut) / 2
-                 : cutIn !== null ? cutIn : cutOut !== null ? cutOut : position;
-        const zs = Math.max(0, zc - ZOOM_MS / 2);
-        const ze = Math.min(duration > 0 ? duration : ZOOM_MS, zc + ZOOM_MS / 2);
-        const zpct = (ms: number) => ((ms - zs) / Math.max(1, ze - zs)) * 100;
         const canAct = cutIn !== null && cutOut !== null && cutIn < cutOut;
         return (
           <>
@@ -1076,27 +1080,6 @@ export default function App() {
               <TouchableOpacity style={[s.cutApplyBtn, !canAct && { opacity: 0.35 }]} onPress={doCutAudio}>
                 <Text style={s.cutMarkText}>✂ Cut</Text>
               </TouchableOpacity>
-            </View>
-            <View
-              style={s.zoomTrack}
-              onLayout={(e) => { zoomWidthRef.current = e.nativeEvent.layout.width || 1; }}
-              onStartShouldSetResponder={() => true}
-              onResponderGrant={(e) => {
-                const ms = zs + (e.nativeEvent.locationX / zoomWidthRef.current) * (ze - zs);
-                soundRef.current?.setPositionAsync(Math.max(0, ms)).catch(() => {});
-              }}
-            >
-              {cutIn !== null && cutOut !== null && cutIn < cutOut && (
-                <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0,
-                  left: `${Math.max(0, zpct(cutIn))}%` as any,
-                  width: `${Math.min(100, zpct(cutOut)) - Math.max(0, zpct(cutIn))}%` as any,
-                  backgroundColor: 'rgba(239,83,80,0.35)' }} />
-              )}
-              {cutIn !== null && <View pointerEvents="none" style={[s.zoomMarker, { left: `${zpct(cutIn)}%` as any, backgroundColor: C.green }]} />}
-              {cutOut !== null && <View pointerEvents="none" style={[s.zoomMarker, { left: `${zpct(cutOut)}%` as any, backgroundColor: '#FF9800' }]} />}
-              {duration > 0 && <View pointerEvents="none" style={[s.zoomCursor, { left: `${zpct(position)}%` as any }]} />}
-              <Text pointerEvents="none" style={[s.zoomLabel, { left: 4 }]}>{fmtTime(zs)}</Text>
-              <Text pointerEvents="none" style={[s.zoomLabel, { right: 4 }]}>{fmtTime(ze)}</Text>
             </View>
           </>
         );
@@ -1407,8 +1390,4 @@ const s = StyleSheet.create({
   cutApplyBtn:   { flex: 1, height: 44, paddingHorizontal: 6, backgroundColor: C.red,    borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   cutMarkText:   { color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   cutRange:      { flex: 1, color: C.text, fontSize: 12, textAlign: 'center' },
-  zoomTrack:     { height: 48, backgroundColor: C.surface, borderRadius: 6, marginBottom: 4, overflow: 'hidden' },
-  zoomCursor:    { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: C.accent },
-  zoomMarker:    { position: 'absolute', top: 0, bottom: 0, width: 2 },
-  zoomLabel:     { position: 'absolute', bottom: 2, color: C.muted, fontSize: 9 },
 });
