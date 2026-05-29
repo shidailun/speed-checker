@@ -389,12 +389,12 @@ export default function App() {
   };
 
   const startSpeedHold = (delta: number) => {
-    const next = Math.round(Math.max(0.9, Math.min(1.6, speedRef.current + delta)) * 100) / 100;
+    const next = Math.round(Math.max(0.5, Math.min(1.5, speedRef.current + delta)) * 100) / 100;
     speedRef.current = next; setSpeed(next);
     if (soundRef.current) soundRef.current.setRateAsync(next, false).catch(() => {});
     speedHoldTimeoutRef.current = setTimeout(() => {
       speedHoldIntervalRef.current = setInterval(() => {
-        const n = Math.round(Math.max(0.9, Math.min(1.6, speedRef.current + delta)) * 100) / 100;
+        const n = Math.round(Math.max(0.5, Math.min(1.5, speedRef.current + delta)) * 100) / 100;
         speedRef.current = n; setSpeed(n);
         if (soundRef.current) soundRef.current.setRateAsync(n, false).catch(() => {});
       }, 120);
