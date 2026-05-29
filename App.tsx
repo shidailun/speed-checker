@@ -175,7 +175,7 @@ export default function App() {
   const cutPreviewRef        = useRef(false);
   const cutInRef             = useRef<number | null>(null);
   const cutOutRef            = useRef<number | null>(null);
-  const cutUndoRef           = useRef<{ globalIdx: number; oldFilename: string } | null>(null);
+  const cutUndoRef           = useRef<{ insertedIdx: number } | null>(null);
 
   const navRef = useRef({ goNext: () => {}, goPrev: () => {} });
   const swipeResponder = useRef(
@@ -794,20 +794,46 @@ export default function App() {
         const newFileUri = await LegacyFS.StorageAccessFramework.createFileAsync(folderUri, saveName, 'audio/wav');
         await LegacyFS.StorageAccessFramework.writeAsStringAsync(newFileUri, b64, { encoding: LegacyFS.EncodingType.Base64 });
         audioMapRef.current[saveName.toLowerCase()] = newFileUri;
-        cutUndoRef.current = { globalIdx: i, oldFilename: entry.filename };
-        await persistFilename(i, saveName);
-        setStatus(`Saved as ${saveName} ✓  (↩ to undo)`);
+
+        // Insert new entry row right after current one
+        const cleanedText = entry.text.replace(/\*f\*/gi, '').replace(/\s{2,}/g, ' ').trim() || entry.text;
+        const wb2 = workbookRef.current!;
+        const ws2 = wb2.Sheets[curSheetRef.current!];
+        const rows2 = XLSX.utils.sheet_to_json<unknown[]>(ws2, { header: 1 });
+        let di2 = 0, insertAfterRow = -1;
+        for (let r = 0; r < rows2.length; r++) {
+          const row = rows2[r] as unknown[];
+          if (Array.isArray(row) && row.length >= 2 && row[0] && row[1]) {
+            if (di2 === i) { insertAfterRow = r; break; }
+            di2++;
+          }
+        }
+        if (insertAfterRow >= 0) insertXlsxRowAfter(ws2, insertAfterRow, cleanedText, saveName);
+
+        const newEntry: Entry = { text: cleanedText, filename: saveName };
+        allEntriesRef.current = [...allEntriesRef.current.slice(0, i + 1), newEntry, ...allEntriesRef.current.slice(i + 1)];
+        entriesRef.current    = allEntriesRef.current;
+        const fi2 = filteredIndicesRef.current.map(x => x > i ? x + 1 : x);
+        const pos2 = fi2.indexOf(i);
+        if (pos2 >= 0) fi2.splice(pos2 + 1, 0, i + 1);
+        filteredIndicesRef.current = fi2;
+        setEntries([...entriesRef.current]);
+        setFilteredCount(fi2.length);
+
+        cutUndoRef.current = { insertedIdx: i + 1 };
+
+        const lp2 = xlsxLocalRef.current;
+        if (lp2) {
+          const b64x = XLSX.write(wb2, { type: 'base64', bookType: 'xlsx', compression: true });
+          await LegacyFS.writeAsStringAsync(lp2, b64x, { encoding: LegacyFS.EncodingType.Base64 });
+        }
+        setStatus(`Added entry: ${saveName} ✓  (↩ to undo)`);
       }
 
       addLog(`✂ ${entry.filename} → ${saveName}: removed ${fmtTime(cutOut - cutIn)} @ ${fmtTime(cutIn)}`);
       setCutIn(null);
       setCutOut(null);
       setCutMode(false);
-
-      // Remove *f* markers from transcription after a successful cut
-      const cleaned = editText.replace(/\*f\*/gi, '').replace(/\s{2,}/g, ' ').trim();
-      if (cleaned !== editText) setEditText(cleaned);
-
       await playCurrentEntry();
     } catch (e) {
       setStatus(`Cut error: ${String(e)}`);
@@ -876,14 +902,43 @@ export default function App() {
   };
 
   const applyUndo = async () => {
-    // Cut undo takes priority if available
+    // Cut undo: remove the inserted _trim entry
     const cutSnap = cutUndoRef.current;
     if (cutSnap) {
       cutUndoRef.current = null;
-      delete audioMapRef.current[entriesRef.current[cutSnap.globalIdx]?.filename.toLowerCase() ?? ''];
-      await persistFilename(cutSnap.globalIdx, cutSnap.oldFilename);
-      setStatus(`Cut undone — reverted to ${cutSnap.oldFilename} ✓`);
-      addLog(`Undo cut: restored ${cutSnap.oldFilename}`);
+      const { insertedIdx } = cutSnap;
+      const removedName = allEntriesRef.current[insertedIdx]?.filename ?? '';
+      delete audioMapRef.current[removedName.toLowerCase()];
+
+      const wb2   = workbookRef.current;
+      const sheet2 = curSheetRef.current;
+      if (wb2 && sheet2) {
+        const ws2   = wb2.Sheets[sheet2];
+        const rows2 = XLSX.utils.sheet_to_json<unknown[]>(ws2, { header: 1 });
+        let di2 = 0, removeRow = -1;
+        for (let r = 0; r < rows2.length; r++) {
+          const row = rows2[r] as unknown[];
+          if (Array.isArray(row) && row.length >= 2 && row[0] && row[1]) {
+            if (di2 === insertedIdx) { removeRow = r; break; }
+            di2++;
+          }
+        }
+        if (removeRow >= 0) removeXlsxRow(ws2, removeRow);
+        const lp2 = xlsxLocalRef.current;
+        if (lp2 && Platform.OS !== 'web') {
+          const b64x = XLSX.write(wb2, { type: 'base64', bookType: 'xlsx', compression: true });
+          await LegacyFS.writeAsStringAsync(lp2, b64x, { encoding: LegacyFS.EncodingType.Base64 });
+        }
+      }
+
+      allEntriesRef.current = [...allEntriesRef.current.slice(0, insertedIdx), ...allEntriesRef.current.slice(insertedIdx + 1)];
+      entriesRef.current    = allEntriesRef.current;
+      const fi2 = filteredIndicesRef.current.filter(x => x !== insertedIdx).map(x => x > insertedIdx ? x - 1 : x);
+      filteredIndicesRef.current = fi2;
+      setEntries([...entriesRef.current]);
+      setFilteredCount(fi2.length);
+      setStatus(`Undo: removed ${removedName} ✓`);
+      addLog(`Undo cut: removed ${removedName}`);
       await playCurrentEntry();
       return;
     }
@@ -1227,6 +1282,33 @@ export default function App() {
       )}
     </KeyboardAvoidingView>
   );
+}
+
+function insertXlsxRowAfter(ws: XLSX.WorkSheet, afterRow: number, col0: string, col1: string) {
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  for (let r = range.e.r; r > afterRow; r--)
+    for (let c = 0; c <= range.e.c; c++) {
+      const from = XLSX.utils.encode_cell({ r, c });
+      const to   = XLSX.utils.encode_cell({ r: r + 1, c });
+      if (ws[from]) { ws[to] = ws[from]; delete ws[from]; } else { delete ws[to]; }
+    }
+  const nr = afterRow + 1;
+  ws[XLSX.utils.encode_cell({ r: nr, c: 0 })] = { t: 's', v: col0, w: col0 };
+  ws[XLSX.utils.encode_cell({ r: nr, c: 1 })] = { t: 's', v: col1, w: col1 };
+  ws['!ref'] = XLSX.utils.encode_range({ s: range.s, e: { r: range.e.r + 1, c: range.e.c } });
+}
+
+function removeXlsxRow(ws: XLSX.WorkSheet, rowIdx: number) {
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  for (let c = 0; c <= range.e.c; c++) delete ws[XLSX.utils.encode_cell({ r: rowIdx, c })];
+  for (let r = rowIdx + 1; r <= range.e.r; r++)
+    for (let c = 0; c <= range.e.c; c++) {
+      const from = XLSX.utils.encode_cell({ r, c });
+      const to   = XLSX.utils.encode_cell({ r: r - 1, c });
+      if (ws[from]) { ws[to] = ws[from]; delete ws[from]; } else { delete ws[to]; }
+    }
+  if (range.e.r > range.s.r)
+    ws['!ref'] = XLSX.utils.encode_range({ s: range.s, e: { r: range.e.r - 1, c: range.e.c } });
 }
 
 function cutWavBuffer(buffer: ArrayBuffer, inMs: number, outMs: number): ArrayBuffer {
