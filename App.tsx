@@ -983,15 +983,25 @@ export default function App() {
 
       {cutMode && hasEntries && (
         <View style={s.cutRow}>
-          <TouchableOpacity style={s.cutMarkBtn} onPress={() => setCutIn(position)}>
-            <Text style={s.cutMarkText}>◀ In</Text>
+          <TouchableOpacity
+            style={[
+              s.cutMarkBtn,
+              cutIn !== null && cutOut === null && { backgroundColor: C.red },
+              cutIn !== null && cutOut !== null && { backgroundColor: C.surface },
+            ]}
+            onPress={() => {
+              if (cutIn === null)                          setCutIn(position);
+              else if (cutOut === null)                   setCutOut(position);
+              else                                        { setCutIn(null); setCutOut(null); }
+            }}
+          >
+            <Text style={s.cutMarkText}>
+              {cutIn === null ? '● Mark In' : cutOut === null ? '● Mark Out' : '↺ Reset'}
+            </Text>
           </TouchableOpacity>
           <Text style={s.cutRange}>
             {cutIn !== null ? fmtTime(cutIn) : '—'}{' → '}{cutOut !== null ? fmtTime(cutOut) : '—'}
           </Text>
-          <TouchableOpacity style={s.cutMarkBtn} onPress={() => setCutOut(position)}>
-            <Text style={s.cutMarkText}>Out ▶</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[s.cutPreviewBtn, (cutIn === null || cutOut === null || cutIn >= cutOut) && { opacity: 0.35 }]}
             onPress={() => playCurrentEntry(undefined, undefined, undefined, true)}
