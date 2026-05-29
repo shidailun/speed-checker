@@ -1054,23 +1054,23 @@ export default function App() {
               <TouchableOpacity style={[s.cutMarkBtn, cutIn !== null && { backgroundColor: C.red }]} onPress={markIn}>
                 <Text style={s.cutMarkText}>● In</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('in', -50)} onPressOut={stopNudgeHold}>
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('in', -10)} onPressOut={stopNudgeHold}>
                 <Text style={s.nudgeBtnText}>◀</Text>
               </TouchableOpacity>
               <TextInput style={s.cutTimeInput} value={cutInText} onChangeText={onCutInTextChange}
                 keyboardType="decimal-pad" placeholder="sec" placeholderTextColor={C.muted} />
-              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('in', 50)} onPressOut={stopNudgeHold}>
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('in', 10)} onPressOut={stopNudgeHold}>
                 <Text style={s.nudgeBtnText}>▶</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.cutMarkBtn, cutOut !== null && { backgroundColor: C.red }]} onPress={markOut}>
                 <Text style={s.cutMarkText}>● Out</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('out', -50)} onPressOut={stopNudgeHold}>
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('out', -10)} onPressOut={stopNudgeHold}>
                 <Text style={s.nudgeBtnText}>◀</Text>
               </TouchableOpacity>
               <TextInput style={s.cutTimeInput} value={cutOutText} onChangeText={onCutOutTextChange}
                 keyboardType="decimal-pad" placeholder="sec" placeholderTextColor={C.muted} />
-              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('out', 50)} onPressOut={stopNudgeHold}>
+              <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('out', 10)} onPressOut={stopNudgeHold}>
                 <Text style={s.nudgeBtnText}>▶</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.cutPreviewBtn, !canAct && { opacity: 0.35 }]}
