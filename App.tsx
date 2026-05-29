@@ -684,8 +684,16 @@ export default function App() {
   const addLog = (msg: string) =>
     setLogLines(prev => [`${logTime()}  ${msg}`, ...prev].slice(0, 50));
 
-  const markIn  = () => { setCutIn(position);  setCutInText((position  / 1000).toFixed(2)); };
-  const markOut = () => { setCutOut(position); setCutOutText((position / 1000).toFixed(2)); };
+  const markIn = async () => {
+    const st  = soundRef.current ? await soundRef.current.getStatusAsync() : null;
+    const pos = st && st.isLoaded ? st.positionMillis : position;
+    setCutIn(pos); setCutInText((pos / 1000).toFixed(3));
+  };
+  const markOut = async () => {
+    const st  = soundRef.current ? await soundRef.current.getStatusAsync() : null;
+    const pos = st && st.isLoaded ? st.positionMillis : position;
+    setCutOut(pos); setCutOutText((pos / 1000).toFixed(3));
+  };
 
   const onCutInTextChange = (t: string) => {
     setCutInText(t);
@@ -705,13 +713,13 @@ export default function App() {
     if (which === 'in') {
       setCutIn(prev => {
         const next = Math.max(0, (prev ?? 0) + delta);
-        setCutInText((next / 1000).toFixed(2));
+        setCutInText((next / 1000).toFixed(3));
         return next;
       });
     } else {
       setCutOut(prev => {
         const next = Math.max(0, (prev ?? 0) + delta);
-        setCutOutText((next / 1000).toFixed(2));
+        setCutOutText((next / 1000).toFixed(3));
         return next;
       });
     }
