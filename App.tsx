@@ -983,25 +983,12 @@ export default function App() {
 
       {cutMode && hasEntries && (
         <View style={s.cutRow}>
-          <TouchableOpacity
-            style={[
-              s.cutMarkBtn,
-              cutIn !== null && cutOut === null && { backgroundColor: C.red },
-              cutIn !== null && cutOut !== null && { backgroundColor: C.surface },
-            ]}
-            onPress={() => {
-              if (cutIn === null)                          setCutIn(position);
-              else if (cutOut === null)                   setCutOut(position);
-              else                                        { setCutIn(null); setCutOut(null); }
-            }}
-          >
-            <Text style={s.cutMarkText}>
-              {cutIn === null ? '● Mark In' : cutOut === null ? '● Mark Out' : '↺ Reset'}
-            </Text>
+          <TouchableOpacity style={[s.cutMarkBtn, cutIn !== null && { backgroundColor: C.red }]} onPress={() => setCutIn(position)}>
+            <Text style={s.cutMarkText}>● In{cutIn !== null ? `\n${fmtTime(cutIn)}` : ''}</Text>
           </TouchableOpacity>
-          <Text style={s.cutRange}>
-            {cutIn !== null ? fmtTime(cutIn) : '—'}{' → '}{cutOut !== null ? fmtTime(cutOut) : '—'}
-          </Text>
+          <TouchableOpacity style={[s.cutMarkBtn, cutOut !== null && { backgroundColor: C.red }]} onPress={() => setCutOut(position)}>
+            <Text style={s.cutMarkText}>● Out{cutOut !== null ? `\n${fmtTime(cutOut)}` : ''}</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[s.cutPreviewBtn, (cutIn === null || cutOut === null || cutIn >= cutOut) && { opacity: 0.35 }]}
             onPress={() => playCurrentEntry(undefined, undefined, undefined, true)}
@@ -1313,10 +1300,10 @@ const s = StyleSheet.create({
   aboutBtn:      { width: 44, height: 52, backgroundColor: C.surface, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   aboutBtnText:  { color: C.muted, fontSize: 18, fontWeight: '700' },
   aboutText:     { color: C.text, fontSize: 14, lineHeight: 22 },
-  cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4, height: 40 },
-  cutMarkBtn:    { height: 40, paddingHorizontal: 10, backgroundColor: '#b71c1c', borderRadius: 8, justifyContent: 'center' },
-  cutPreviewBtn: { height: 40, paddingHorizontal: 10, backgroundColor: '#01579b', borderRadius: 8, justifyContent: 'center' },
-  cutApplyBtn:   { height: 40, paddingHorizontal: 10, backgroundColor: C.red,    borderRadius: 8, justifyContent: 'center' },
-  cutMarkText:   { color: '#fff', fontSize: 12, fontWeight: '700' },
+  cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  cutMarkBtn:    { flex: 1, minHeight: 44, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#b71c1c', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cutPreviewBtn: { flex: 1, height: 44, paddingHorizontal: 8, backgroundColor: '#01579b', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cutApplyBtn:   { flex: 1, height: 44, paddingHorizontal: 8, backgroundColor: C.red,    borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cutMarkText:   { color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   cutRange:      { flex: 1, color: C.text, fontSize: 12, textAlign: 'center' },
 });
