@@ -1,0 +1,41 @@
+{
+  "name": "speed-checker",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "build:android": "eas build --platform android --profile preview"
+  },
+  "dependencies": {
+    "@react-native-community/slider": "5.1.2",
+    "@types/react": "~19.2.10",
+    "expo": "~55.0.24",
+    "expo-av": "~16.0.8",
+    "expo-document-picker": "~55.0.13",
+    "expo-file-system": "~55.0.20",
+    "expo-sharing": "~55.0.19",
+    "expo-status-bar": "~55.0.6",
+    "expo-updates": "~55.0.23",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-web": "^0.21.0",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "babel-preset-expo": "~13.0.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "expo-av"
+        ]
+      }
+    }
+  }
+}

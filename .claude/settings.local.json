@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(adb devices *)",
+      "PowerShell(adb devices *)",
+      "PowerShell(& \"C:\\\\platform-tools\\\\adb.exe\" devices)",
+      "PowerShell(& \"C:\\\\platform-tools\\\\adb.exe\" install \"bin\\\\speedchecker-1.0-arm64-v8a-debug.apk\")",
+      "PowerShell(& \"C:\\\\platform-tools\\\\adb.exe\" install \"speedchecker-debug-1.0.apk\")",
+      "PowerShell(& \"C:\\\\platform-tools\\\\adb.exe\" install \"bin\\\\speedchecker-debug-1.0.apk\")",
+      "PowerShell(findstr *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(buildozer *)",
+      "PowerShell(wsl -e bash -c \"cd '/mnt/c/Users/ASUS/OneDrive - Lingnan University/Desktop/SeediqMT/seediq-tools/speed_check_app' && buildozer android debug 2>&1\")",
+      "PowerShell(wsl --list --verbose)",
+      "Read(//mnt/c/Users/ASUS/OneDrive - Lingnan University/Desktop/SeediqMT/seediq-tools/**)",
+      "Bash(buildozer android *)",
+      "Read(//mnt/c/Users/**)",
+      "Bash(ls /mnt/)",
+      "Read(//proc/**)",
+      "Bash(buildozer --help)",
+      "PowerShell(docker info *)",
+      "PowerShell(New-Item *)",
+      "PowerShell($appDir = \"C:\\\\Users\\\\ASUS\\\\OneDrive - Lingnan University\\\\Desktop\\\\SeediqMT\\\\seediq-tools\\\\speed_check_app\"; docker run --rm --dns 8.8.8.8 --dns 8.8.4.4 -v \"${appDir}/bin:/app/bin\" speedchecker-builder 2>&1)",
+      "PowerShell(docker run *)",
+      "PowerShell(Stop-Process *)",
+      "Bash(buildozer --version)",
+      "Bash(pip show *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(npm *)",
+      "PowerShell(Set-ExecutionPolicy *)",
+      "PowerShell(cd \"C:\\\\Users\\\\user\\\\OneDrive - Lingnan University\\\\Desktop\\\\SeediqMT\\\\seediq-tools\\\\speed_check_app\"; $env:EAS_NO_VCS=1; $env:EXPO_TOKEN=\"CmAUSFbaoBA0QlrC3vV6djmfQ5rHI97_VLJc3azf\"; npx eas build --platform android --profile preview --non-interactive 2>&1)",
+      "PowerShell(cmd /c \"dir /a C:\\\\Users\\\\user\\\\.claude\")",
+      "PowerShell(cmd /c \"dir /a /s C:\\\\Users\\\\user\\\\.claude\\\\projects\")",
+      "PowerShell(eas update *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\user\\\\OneDrive - Lingnan University\\\\Desktop\\\\SeediqMT\\\\seediq-tools\\\\speedchecker\" -Exclude node_modules | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\user\\\\OneDrive - Lingnan University\\\\Desktop\\\\SeediqMT\\\\seediq-tools\\\\speedchecker\\\\app\" -Recurse | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\user\\\\OneDrive - Lingnan University\\\\Desktop\\\\SeediqMT\\\\seediq-tools\\\\speedchecker\\\\\", \"\"\\) })",
+      "PowerShell(git *)"
+    ]
+  }
+}

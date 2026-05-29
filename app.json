@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Speed Checker",
+    "slug": "speed-checker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "android": {
+      "package": "com.seediq.speedchecker",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0d1117"
+      },
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "plugins": [
+      "expo-av",
+      "expo-document-picker",
+      "expo-sharing"
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/e78daacd-179e-40f8-9b93-23b1b126e6f5"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e78daacd-179e-40f8-9b93-23b1b126e6f5"
+      }
+    }
+  }
+}
