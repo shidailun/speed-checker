@@ -151,6 +151,8 @@ export default function App() {
   const [cutMode,       setCutMode]       = useState(false);
   const [cutIn,         setCutIn]         = useState<number | null>(null);
   const [cutOut,        setCutOut]        = useState<number | null>(null);
+  const [cutInText,     setCutInText]     = useState('');
+  const [cutOutText,    setCutOutText]    = useState('');
 
   const soundRef             = useRef<Audio.Sound | null>(null);
   const workbookRef          = useRef<XLSX.WorkBook | null>(null);
@@ -173,6 +175,7 @@ export default function App() {
   const cutPreviewRef        = useRef(false);
   const cutInRef             = useRef<number | null>(null);
   const cutOutRef            = useRef<number | null>(null);
+  const zoomWidthRef         = useRef(1);
 
   const navRef = useRef({ goNext: () => {}, goPrev: () => {} });
   const swipeResponder = useRef(
@@ -681,6 +684,20 @@ export default function App() {
   const addLog = (msg: string) =>
     setLogLines(prev => [`${logTime()}  ${msg}`, ...prev].slice(0, 50));
 
+  const markIn  = () => { setCutIn(position);  setCutInText((position  / 1000).toFixed(2)); };
+  const markOut = () => { setCutOut(position); setCutOutText((position / 1000).toFixed(2)); };
+
+  const onCutInTextChange = (t: string) => {
+    setCutInText(t);
+    const ms = parseFloat(t) * 1000;
+    if (!isNaN(ms) && ms >= 0) setCutIn(ms);
+  };
+  const onCutOutTextChange = (t: string) => {
+    setCutOutText(t);
+    const ms = parseFloat(t) * 1000;
+    if (!isNaN(ms) && ms >= 0) setCutOut(ms);
+  };
+
   const doCutAudio = async () => {
     const list  = entriesRef.current;
     const i     = idxRef.current;
@@ -981,28 +998,71 @@ export default function App() {
         </View>
       </View>
 
-      {cutMode && hasEntries && (
-        <View style={s.cutRow}>
-          <TouchableOpacity style={[s.cutMarkBtn, cutIn !== null && { backgroundColor: C.red }]} onPress={() => setCutIn(position)}>
-            <Text style={s.cutMarkText}>● In{cutIn !== null ? `\n${fmtTime(cutIn)}` : ''}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.cutMarkBtn, cutOut !== null && { backgroundColor: C.red }]} onPress={() => setCutOut(position)}>
-            <Text style={s.cutMarkText}>● Out{cutOut !== null ? `\n${fmtTime(cutOut)}` : ''}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.cutPreviewBtn, (cutIn === null || cutOut === null || cutIn >= cutOut) && { opacity: 0.35 }]}
-            onPress={() => playCurrentEntry(undefined, undefined, undefined, true)}
-          >
-            <Text style={s.cutMarkText}>▶ Preview</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.cutApplyBtn, (cutIn === null || cutOut === null || cutIn >= cutOut) && { opacity: 0.35 }]}
-            onPress={doCutAudio}
-          >
-            <Text style={s.cutMarkText}>✂ Cut</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {cutMode && hasEntries && (() => {
+        const ZOOM_MS = 4000;
+        const zc = cutIn !== null && cutOut !== null ? (cutIn + cutOut) / 2
+                 : cutIn !== null ? cutIn : cutOut !== null ? cutOut : position;
+        const zs = Math.max(0, zc - ZOOM_MS / 2);
+        const ze = Math.min(duration > 0 ? duration : ZOOM_MS, zc + ZOOM_MS / 2);
+        const zpct = (ms: number) => ((ms - zs) / Math.max(1, ze - zs)) * 100;
+        const canAct = cutIn !== null && cutOut !== null && cutIn < cutOut;
+        return (
+          <>
+            <View style={s.cutRow}>
+              <TouchableOpacity style={[s.cutMarkBtn, cutIn !== null && { backgroundColor: C.red }]} onPress={markIn}>
+                <Text style={s.cutMarkText}>● In</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={s.cutTimeInput}
+                value={cutInText}
+                onChangeText={onCutInTextChange}
+                keyboardType="decimal-pad"
+                placeholder="sec"
+                placeholderTextColor={C.muted}
+              />
+              <TouchableOpacity style={[s.cutMarkBtn, cutOut !== null && { backgroundColor: C.red }]} onPress={markOut}>
+                <Text style={s.cutMarkText}>● Out</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={s.cutTimeInput}
+                value={cutOutText}
+                onChangeText={onCutOutTextChange}
+                keyboardType="decimal-pad"
+                placeholder="sec"
+                placeholderTextColor={C.muted}
+              />
+              <TouchableOpacity style={[s.cutPreviewBtn, !canAct && { opacity: 0.35 }]}
+                onPress={() => playCurrentEntry(undefined, undefined, undefined, true)}>
+                <Text style={s.cutMarkText}>▶ Preview</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.cutApplyBtn, !canAct && { opacity: 0.35 }]} onPress={doCutAudio}>
+                <Text style={s.cutMarkText}>✂ Cut</Text>
+              </TouchableOpacity>
+            </View>
+            <View
+              style={s.zoomTrack}
+              onLayout={(e) => { zoomWidthRef.current = e.nativeEvent.layout.width || 1; }}
+              onStartShouldSetResponder={() => true}
+              onResponderGrant={(e) => {
+                const ms = zs + (e.nativeEvent.locationX / zoomWidthRef.current) * (ze - zs);
+                soundRef.current?.setPositionAsync(Math.max(0, ms)).catch(() => {});
+              }}
+            >
+              {cutIn !== null && cutOut !== null && cutIn < cutOut && (
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0,
+                  left: `${Math.max(0, zpct(cutIn))}%` as any,
+                  width: `${Math.min(100, zpct(cutOut)) - Math.max(0, zpct(cutIn))}%` as any,
+                  backgroundColor: 'rgba(239,83,80,0.35)' }} />
+              )}
+              {cutIn !== null && <View pointerEvents="none" style={[s.zoomMarker, { left: `${zpct(cutIn)}%` as any, backgroundColor: C.green }]} />}
+              {cutOut !== null && <View pointerEvents="none" style={[s.zoomMarker, { left: `${zpct(cutOut)}%` as any, backgroundColor: '#FF9800' }]} />}
+              {duration > 0 && <View pointerEvents="none" style={[s.zoomCursor, { left: `${zpct(position)}%` as any }]} />}
+              <Text pointerEvents="none" style={[s.zoomLabel, { left: 4 }]}>{fmtTime(zs)}</Text>
+              <Text pointerEvents="none" style={[s.zoomLabel, { right: 4 }]}>{fmtTime(ze)}</Text>
+            </View>
+          </>
+        );
+      })()}
 
       {/* Swipe strip with arrow buttons on edges */}
       <View style={s.swipeStrip} {...swipeResponder.panHandlers}>
@@ -1300,10 +1360,15 @@ const s = StyleSheet.create({
   aboutBtn:      { width: 44, height: 52, backgroundColor: C.surface, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   aboutBtnText:  { color: C.muted, fontSize: 18, fontWeight: '700' },
   aboutText:     { color: C.text, fontSize: 14, lineHeight: 22 },
-  cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  cutMarkBtn:    { flex: 1, minHeight: 44, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#b71c1c', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  cutPreviewBtn: { flex: 1, height: 44, paddingHorizontal: 8, backgroundColor: '#01579b', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  cutApplyBtn:   { flex: 1, height: 44, paddingHorizontal: 8, backgroundColor: C.red,    borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  cutMarkBtn:    { height: 44, paddingHorizontal: 8, backgroundColor: '#b71c1c', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cutTimeInput:  { width: 54, height: 44, backgroundColor: C.bg, color: C.text, borderRadius: 8, paddingHorizontal: 6, fontSize: 13, textAlign: 'center', borderWidth: 1, borderColor: C.red },
+  cutPreviewBtn: { flex: 1, height: 44, paddingHorizontal: 6, backgroundColor: '#01579b', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cutApplyBtn:   { flex: 1, height: 44, paddingHorizontal: 6, backgroundColor: C.red,    borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   cutMarkText:   { color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   cutRange:      { flex: 1, color: C.text, fontSize: 12, textAlign: 'center' },
+  zoomTrack:     { height: 48, backgroundColor: C.surface, borderRadius: 6, marginBottom: 4, overflow: 'hidden' },
+  zoomCursor:    { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: C.accent },
+  zoomMarker:    { position: 'absolute', top: 0, bottom: 0, width: 2 },
+  zoomLabel:     { position: 'absolute', bottom: 2, color: C.muted, fontSize: 9 },
 });
