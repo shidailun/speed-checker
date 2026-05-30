@@ -361,13 +361,13 @@ export default function App() {
     setDuration(0);
   };
 
-  const playUri = async (uri: string) => {
+  const playUri = async (uri: string, startMs = 0) => {
     await stopSound();
     currentUriRef.current = uri;
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
-        { shouldPlay: true, rate: speedRef.current, shouldCorrectPitch: false, volume: 1.0, progressUpdateIntervalMillis: 50 },
+        { shouldPlay: true, rate: speedRef.current, shouldCorrectPitch: false, volume: 1.0, progressUpdateIntervalMillis: 50, positionMillis: startMs },
         (s) => {
           if (!s.isLoaded) return;
           if (s.didJustFinish) setPlaying(false);
@@ -774,7 +774,7 @@ export default function App() {
   const addLog = (msg: string) =>
     setLogLines(prev => [`${logTime()}  ${msg}`, ...prev].slice(0, 50));
 
-  const doPreview = async () => {
+  const doPreview = async (startMs = 0) => {
     const entry = entriesRef.current[idxRef.current];
     if (!entry || cutIn === null || cutOut === null || cutIn >= cutOut) {
       setStatus('Set In and Out points first.'); return;
@@ -796,7 +796,7 @@ export default function App() {
         }
         const blob = new Blob([audioBufferToWav(nb)], { type: 'audio/wav' });
         const url  = URL.createObjectURL(blob);
-        await playUri(url);
+        await playUri(url, startMs);
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       } else {
         if (!entry.filename.toLowerCase().endsWith('.wav')) {
@@ -809,7 +809,7 @@ export default function App() {
           bin += String.fromCharCode(...u8.subarray(j, Math.min(j + ch, u8.length)));
         const tmp = LegacyFS.documentDirectory + '_preview_cut.wav';
         await LegacyFS.writeAsStringAsync(tmp, btoa(bin), { encoding: LegacyFS.EncodingType.Base64 });
-        await playUri(tmp);
+        await playUri(tmp, startMs);
       }
     } catch (e) { setStatus(`Preview error: ${String(e)}`); }
     finally { setLoading(false); }
@@ -1151,7 +1151,17 @@ export default function App() {
               }
               if (cutMode) {
                 const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
-                if (canCut) { await doPreview(); return; }
+                if (canCut) {
+                  const origDur2 = origDurationRef.current || duration;
+                  const ratio2   = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidthRef.current));
+                  const tapMs    = Math.floor(ratio2 * origDur2);
+                  // Map tap position in original → position in preview
+                  let previewMs  = tapMs;
+                  if (tapMs >= cutIn! && tapMs < cutOut!) previewMs = cutIn!;
+                  else if (tapMs >= cutOut!) previewMs = tapMs - (cutOut! - cutIn!);
+                  await doPreview(Math.max(0, previewMs));
+                  return;
+                }
                 // No marks — seek in original using origDuration
                 const origDur = origDurationRef.current || duration;
                 if (!soundRef.current || origDur === 0) { await playCurrentEntry(); return; }
