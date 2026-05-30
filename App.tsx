@@ -154,7 +154,11 @@ export default function App() {
   const [cutOut,        setCutOut]        = useState<number | null>(null);
   const [cutInText,     setCutInText]     = useState('');
   const [cutOutText,    setCutOutText]    = useState('');
-  const [activeBand, setActiveBand] = useState<'top'|'bottom'|null>(null);
+  const [activeBand,     setActiveBand]     = useState<'top'|'bottom'|null>(null);
+  const [topPosition,    setTopPosition]    = useState(0);
+  const [topDuration,    setTopDuration]    = useState(0);
+  const [bottomPosition, setBottomPosition] = useState(0);
+  const [bottomDuration, setBottomDuration] = useState(0);
 
   const soundRef             = useRef<Audio.Sound | null>(null);
   const workbookRef          = useRef<XLSX.WorkBook | null>(null);
@@ -370,8 +374,12 @@ export default function App() {
         (s) => {
           if (!s.isLoaded) return;
           if (s.didJustFinish) setPlaying(false);
-          setPosition(s.positionMillis ?? 0);
-          if (s.durationMillis) setDuration(s.durationMillis);
+          const pos = s.positionMillis ?? 0;
+          const dur = s.durationMillis;
+          setPosition(pos);
+          if (dur) setDuration(dur);
+          if (routeToBottom) { setBottomPosition(pos); if (dur) setBottomDuration(dur); }
+          else               { setTopPosition(pos);    if (dur) setTopDuration(dur);    }
         },
       );
       soundRef.current = sound;
@@ -1171,7 +1179,7 @@ export default function App() {
             })().catch(() => {});
           }}
         >
-          {activeBand === 'top' && <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />}
+          <View style={[s.progressFill, { width: `${topDuration > 0 ? Math.min(topPosition / topDuration * 100, 100) : 0}%` }]} />
           {!!editText && (() => {
             const words = editText.trim().split(/\s+/).filter(Boolean);
             const totalChars = words.join('').length;
@@ -1194,15 +1202,28 @@ export default function App() {
             <TouchableOpacity style={[s.playBtn, { backgroundColor: '#01579b' }]} onPress={playBottomBand}>
               <Text style={s.playBtnText}>{canCut ? '✂▶' : '▶'}</Text>
             </TouchableOpacity>
-            <View style={s.progressTrack}>
-              {activeBand === 'bottom' && (
-                <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
-              )}
-              {canCut && activeBand !== 'bottom' && duration > 0 && (
+            <View
+              style={s.progressTrack}
+              onStartShouldSetResponder={() => true}
+              onResponderGrant={(e) => {
+                (async () => {
+                  if (activeBand !== 'bottom' || !soundRef.current || duration === 0) {
+                    await playBottomBand(); return;
+                  }
+                  const ratio  = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidthRef.current));
+                  const seekMs = Math.floor(ratio * duration);
+                  await soundRef.current.setPositionAsync(seekMs);
+                  const st = await soundRef.current.getStatusAsync();
+                  if (st.isLoaded && !st.isPlaying) { await soundRef.current.playAsync(); setPlaying(true); }
+                })().catch(() => {});
+              }}
+            >
+              <View style={[s.progressFill, { width: `${bottomDuration > 0 ? Math.min(bottomPosition / bottomDuration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
+              {canCut && activeBand !== 'bottom' && topDuration > 0 && (
                 <View pointerEvents="none" style={{
                   position: 'absolute', top: 0, bottom: 0,
-                  left:  `${Math.min(cutIn!  / duration * 100, 100)}%` as any,
-                  width: `${Math.min((cutOut! - cutIn!) / duration * 100, 100)}%` as any,
+                  left:  `${Math.min(cutIn!  / topDuration * 100, 100)}%` as any,
+                  width: `${Math.min((cutOut! - cutIn!) / topDuration * 100, 100)}%` as any,
                   backgroundColor: 'rgba(239,83,80,0.55)',
                 }} />
               )}
