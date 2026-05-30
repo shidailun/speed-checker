@@ -154,7 +154,7 @@ export default function App() {
   const [cutOut,        setCutOut]        = useState<number | null>(null);
   const [cutInText,     setCutInText]     = useState('');
   const [cutOutText,    setCutOutText]    = useState('');
-  const [playingPreview, setPlayingPreview] = useState(false);
+  const [activeBand, setActiveBand] = useState<'top'|'bottom'|null>(null);
 
   const soundRef             = useRef<Audio.Sound | null>(null);
   const workbookRef          = useRef<XLSX.WorkBook | null>(null);
@@ -358,12 +358,11 @@ export default function App() {
     setPlaying(false);
     setPosition(0);
     setDuration(0);
-    setPlayingPreview(false);
   };
 
   const playUri = async (uri: string, routeToBottom = false) => {
     await stopSound();
-    if (routeToBottom) setPlayingPreview(true);
+    setActiveBand(routeToBottom ? 'bottom' : 'top');
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
@@ -1133,6 +1132,11 @@ export default function App() {
               if (next) {
                 speedRef.current = 0.75; setSpeed(0.75);
                 soundRef.current?.setRateAsync(0.75, false).catch(() => {});
+                const entry = entriesRef.current[idxRef.current];
+                if (entry) {
+                  const uri = findAudioUri(entry.filename, audioMapRef.current);
+                  if (uri) playUri(uri, true).catch(() => {});
+                }
               }
             }}
           >
@@ -1167,7 +1171,7 @@ export default function App() {
             })().catch(() => {});
           }}
         >
-          {!playingPreview && <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />}
+          {activeBand === 'top' && <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />}
           {!!editText && (() => {
             const words = editText.trim().split(/\s+/).filter(Boolean);
             const totalChars = words.join('').length;
@@ -1190,11 +1194,11 @@ export default function App() {
             <TouchableOpacity style={[s.playBtn, { backgroundColor: '#01579b' }]} onPress={playBottomBand}>
               <Text style={s.playBtnText}>{canCut ? '✂▶' : '▶'}</Text>
             </TouchableOpacity>
-            <View style={[s.progressTrack, { backgroundColor: '#01579b' }]}>
-              {playingPreview && (
-                <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%`, backgroundColor: C.accent }]} />
+            <View style={s.progressTrack}>
+              {activeBand === 'bottom' && (
+                <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
               )}
-              {canCut && !playingPreview && duration > 0 && (
+              {canCut && activeBand !== 'bottom' && duration > 0 && (
                 <View pointerEvents="none" style={{
                   position: 'absolute', top: 0, bottom: 0,
                   left:  `${Math.min(cutIn!  / duration * 100, 100)}%` as any,
@@ -1202,7 +1206,7 @@ export default function App() {
                   backgroundColor: 'rgba(239,83,80,0.55)',
                 }} />
               )}
-              <Text pointerEvents="none" style={{ position: 'absolute', bottom: 4, left: 8, color: canCut ? '#fff' : C.muted, fontSize: 11 }}>
+              <Text pointerEvents="none" style={{ position: 'absolute', bottom: 4, left: 8, color: canCut ? C.text : C.muted, fontSize: 11 }}>
                 {canCut
                   ? `${fmtTime(cutIn!)} → ${fmtTime(cutOut!)}   −${fmtTime(cutOut! - cutIn!)}`
                   : 'press ▶ to play, then mark In & Out'}
