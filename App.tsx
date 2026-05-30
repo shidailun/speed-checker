@@ -154,11 +154,6 @@ export default function App() {
   const [cutOut,        setCutOut]        = useState<number | null>(null);
   const [cutInText,     setCutInText]     = useState('');
   const [cutOutText,    setCutOutText]    = useState('');
-  const [activeBand,     setActiveBand]     = useState<'top'|'bottom'|null>(null);
-  const [topPosition,    setTopPosition]    = useState(0);
-  const [topDuration,    setTopDuration]    = useState(0);
-  const [bottomPosition, setBottomPosition] = useState(0);
-  const [bottomDuration, setBottomDuration] = useState(0);
 
   const soundRef             = useRef<Audio.Sound | null>(null);
   const workbookRef          = useRef<XLSX.WorkBook | null>(null);
@@ -364,9 +359,8 @@ export default function App() {
     setDuration(0);
   };
 
-  const playUri = async (uri: string, routeToBottom = false) => {
+  const playUri = async (uri: string) => {
     await stopSound();
-    setActiveBand(routeToBottom ? 'bottom' : 'top');
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
@@ -374,12 +368,8 @@ export default function App() {
         (s) => {
           if (!s.isLoaded) return;
           if (s.didJustFinish) setPlaying(false);
-          const pos = s.positionMillis ?? 0;
-          const dur = s.durationMillis;
-          setPosition(pos);
-          if (dur) setDuration(dur);
-          if (routeToBottom) { setBottomPosition(pos); if (dur) setBottomDuration(dur); }
-          else               { setTopPosition(pos);    if (dur) setTopDuration(dur);    }
+          setPosition(s.positionMillis ?? 0);
+          if (s.durationMillis) setDuration(s.durationMillis);
         },
       );
       soundRef.current = sound;
@@ -777,21 +767,6 @@ export default function App() {
   const addLog = (msg: string) =>
     setLogLines(prev => [`${logTime()}  ${msg}`, ...prev].slice(0, 50));
 
-  const playBottomBand = async () => {
-    const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
-    if (canCut) {
-      await doPreview();
-    } else {
-      // Play original on bottom band for marking
-      const entry = entriesRef.current[idxRef.current];
-      if (!entry) return;
-      const uri = findAudioUri(entry.filename, audioMapRef.current);
-      if (!uri) { setStatus(`Audio not found: ${entry.filename}`); return; }
-      setStatus(entry.filename);
-      await playUri(uri, true);
-    }
-  };
-
   const doPreview = async () => {
     const entry = entriesRef.current[idxRef.current];
     if (!entry || cutIn === null || cutOut === null || cutIn >= cutOut) {
@@ -814,7 +789,7 @@ export default function App() {
         }
         const blob = new Blob([audioBufferToWav(nb)], { type: 'audio/wav' });
         const url  = URL.createObjectURL(blob);
-        await playUri(url, true);
+        await playUri(url);
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       } else {
         if (!entry.filename.toLowerCase().endsWith('.wav')) {
@@ -827,7 +802,7 @@ export default function App() {
           bin += String.fromCharCode(...u8.subarray(j, Math.min(j + ch, u8.length)));
         const tmp = LegacyFS.documentDirectory + '_preview_cut.wav';
         await LegacyFS.writeAsStringAsync(tmp, btoa(bin), { encoding: LegacyFS.EncodingType.Base64 });
-        await playUri(tmp, true);
+        await playUri(tmp);
       }
     } catch (e) { setStatus(`Preview error: ${String(e)}`); }
     finally { setLoading(false); }
@@ -1141,10 +1116,7 @@ export default function App() {
                 speedRef.current = 0.75; setSpeed(0.75);
                 soundRef.current?.setRateAsync(0.75, false).catch(() => {});
                 const entry = entriesRef.current[idxRef.current];
-                if (entry) {
-                  const uri = findAudioUri(entry.filename, audioMapRef.current);
-                  if (uri) playUri(uri, true).catch(() => {});
-                }
+                if (entry) playCurrentEntry().catch(() => {});
               }
             }}
           >
@@ -1155,8 +1127,11 @@ export default function App() {
 
       {/* Play button + progress bar */}
       <View style={s.progressRow}>
-        <TouchableOpacity style={s.playBtn} onPress={() => playCurrentEntry()}>
-          <Text style={s.playBtnText}>{playing ? '▶▶' : '▶'}</Text>
+        <TouchableOpacity style={s.playBtn} onPress={() => {
+          const canCut = cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut!;
+          if (canCut) doPreview(); else playCurrentEntry();
+        }}>
+          <Text style={s.playBtnText}>{playing ? '▶▶' : (cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut! ? '✂▶' : '▶')}</Text>
         </TouchableOpacity>
         <View
           style={s.progressTrack}
@@ -1179,7 +1154,15 @@ export default function App() {
             })().catch(() => {});
           }}
         >
-          <View style={[s.progressFill, { width: `${topDuration > 0 ? Math.min(topPosition / topDuration * 100, 100) : 0}%` }]} />
+          <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />
+          {cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut! && duration > 0 && (
+            <View pointerEvents="none" style={{
+              position: 'absolute', top: 0, bottom: 0,
+              left:  `${Math.min(cutIn  / duration * 100, 100)}%` as any,
+              width: `${Math.min((cutOut! - cutIn) / duration * 100, 100)}%` as any,
+              backgroundColor: 'rgba(239,83,80,0.45)',
+            }} />
+          )}
           {!!editText && (() => {
             const words = editText.trim().split(/\s+/).filter(Boolean);
             const totalChars = words.join('').length;
@@ -1194,48 +1177,6 @@ export default function App() {
           })()}
         </View>
       </View>
-
-      {cutMode && hasEntries && (() => {
-        const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
-        return (
-          <View style={s.progressRow}>
-            <TouchableOpacity style={[s.playBtn, { backgroundColor: '#01579b' }]} onPress={playBottomBand}>
-              <Text style={s.playBtnText}>{canCut ? '✂▶' : '▶'}</Text>
-            </TouchableOpacity>
-            <View
-              style={s.progressTrack}
-              onStartShouldSetResponder={() => true}
-              onResponderGrant={(e) => {
-                (async () => {
-                  if (activeBand !== 'bottom' || !soundRef.current || duration === 0) {
-                    await playBottomBand(); return;
-                  }
-                  const ratio  = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidthRef.current));
-                  const seekMs = Math.floor(ratio * duration);
-                  await soundRef.current.setPositionAsync(seekMs);
-                  const st = await soundRef.current.getStatusAsync();
-                  if (st.isLoaded && !st.isPlaying) { await soundRef.current.playAsync(); setPlaying(true); }
-                })().catch(() => {});
-              }}
-            >
-              <View style={[s.progressFill, { width: `${bottomDuration > 0 ? Math.min(bottomPosition / bottomDuration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
-              {canCut && activeBand !== 'bottom' && (topDuration || bottomDuration) > 0 && (
-                <View pointerEvents="none" style={{
-                  position: 'absolute', top: 0, bottom: 0,
-                  left:  `${Math.min(cutIn!  / (topDuration || bottomDuration) * 100, 100)}%` as any,
-                  width: `${Math.min((cutOut! - cutIn!) / (topDuration || bottomDuration) * 100, 100)}%` as any,
-                  backgroundColor: 'rgba(239,83,80,0.55)',
-                }} />
-              )}
-              <Text pointerEvents="none" style={{ position: 'absolute', bottom: 4, left: 8, color: canCut ? C.text : C.muted, fontSize: 11 }}>
-                {canCut
-                  ? `${fmtTime(cutIn!)} → ${fmtTime(cutOut!)}   −${fmtTime(cutOut! - cutIn!)}`
-                  : 'press ▶ to play, then mark In & Out'}
-              </Text>
-            </View>
-          </View>
-        );
-      })()}
 
       {cutMode && hasEntries && (() => {
         const canAct = cutIn !== null && cutOut !== null && cutIn < cutOut;
