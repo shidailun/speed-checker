@@ -381,7 +381,6 @@ export default function App() {
 
   const playCurrentEntry = async (list?: Entry[], i?: number, map?: Record<string, string>, preview = false) => {
     cutPreviewRef.current = preview;
-    setPlayingPreview(false);
     const L = list ?? entriesRef.current;
     const n = i    ?? idxRef.current;
     const m = map  ?? audioMapRef.current;
@@ -769,6 +768,23 @@ export default function App() {
 
   const addLog = (msg: string) =>
     setLogLines(prev => [`${logTime()}  ${msg}`, ...prev].slice(0, 50));
+
+  const playBottomBand = async () => {
+    const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
+    if (canCut) {
+      await doPreview();
+    } else {
+      // Play original on bottom band for marking
+      const entry = entriesRef.current[idxRef.current];
+      if (!entry) return;
+      const uri = findAudioUri(entry.filename, audioMapRef.current);
+      if (!uri) { setStatus(`Audio not found: ${entry.filename}`); return; }
+      await stopSound();
+      setStatus(entry.filename);
+      setPlayingPreview(true);
+      await playUri(uri);
+    }
+  };
 
   const doPreview = async () => {
     const entry = entriesRef.current[idxRef.current];
@@ -1164,21 +1180,17 @@ export default function App() {
       </View>
 
       {cutMode && hasEntries && (() => {
-        const canPlay = cutIn !== null && cutOut !== null && cutIn < cutOut!;
+        const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
         return (
           <View style={s.progressRow}>
-            <TouchableOpacity
-              style={[s.playBtn, { backgroundColor: canPlay ? '#01579b' : C.surface }]}
-              onPress={doPreview}
-              disabled={!canPlay}
-            >
-              <Text style={s.playBtnText}>✂▶</Text>
+            <TouchableOpacity style={[s.playBtn, { backgroundColor: '#01579b' }]} onPress={playBottomBand}>
+              <Text style={s.playBtnText}>{canCut ? '✂▶' : '▶'}</Text>
             </TouchableOpacity>
             <View style={[s.progressTrack, { backgroundColor: '#0a1929' }]}>
               {playingPreview && (
                 <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
               )}
-              {canPlay && !playingPreview && (
+              {canCut && !playingPreview && duration > 0 && (
                 <View pointerEvents="none" style={{
                   position: 'absolute', top: 0, bottom: 0,
                   left:  `${Math.min(cutIn!  / duration * 100, 100)}%` as any,
@@ -1186,10 +1198,10 @@ export default function App() {
                   backgroundColor: 'rgba(239,83,80,0.55)',
                 }} />
               )}
-              <Text pointerEvents="none" style={{ position: 'absolute', bottom: 4, left: 8, color: canPlay ? C.text : C.muted, fontSize: 11 }}>
-                {canPlay
+              <Text pointerEvents="none" style={{ position: 'absolute', bottom: 4, left: 8, color: canCut ? '#fff' : C.muted, fontSize: 11 }}>
+                {canCut
                   ? `${fmtTime(cutIn!)} → ${fmtTime(cutOut!)}   −${fmtTime(cutOut! - cutIn!)}`
-                  : 'set In & Out to enable'}
+                  : 'press ▶ to play, then mark In & Out'}
               </Text>
             </View>
           </View>
