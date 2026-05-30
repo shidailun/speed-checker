@@ -154,6 +154,7 @@ export default function App() {
   const [cutOut,        setCutOut]        = useState<number | null>(null);
   const [cutInText,     setCutInText]     = useState('');
   const [cutOutText,    setCutOutText]    = useState('');
+  const [playingPreview, setPlayingPreview] = useState(false);
 
   const soundRef             = useRef<Audio.Sound | null>(null);
   const workbookRef          = useRef<XLSX.WorkBook | null>(null);
@@ -357,6 +358,7 @@ export default function App() {
     setPlaying(false);
     setPosition(0);
     setDuration(0);
+    setPlayingPreview(false);
   };
 
   const playUri = async (uri: string) => {
@@ -379,6 +381,7 @@ export default function App() {
 
   const playCurrentEntry = async (list?: Entry[], i?: number, map?: Record<string, string>, preview = false) => {
     cutPreviewRef.current = preview;
+    setPlayingPreview(false);
     const L = list ?? entriesRef.current;
     const n = i    ?? idxRef.current;
     const m = map  ?? audioMapRef.current;
@@ -756,6 +759,7 @@ export default function App() {
         }
         const blob = new Blob([audioBufferToWav(nb)], { type: 'audio/wav' });
         const url  = URL.createObjectURL(blob);
+        setPlayingPreview(true);
         await playUri(url);
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       } else {
@@ -769,6 +773,7 @@ export default function App() {
           bin += String.fromCharCode(...u8.subarray(j, Math.min(j + ch, u8.length)));
         const tmp = LegacyFS.documentDirectory + '_preview_cut.wav';
         await LegacyFS.writeAsStringAsync(tmp, btoa(bin), { encoding: LegacyFS.EncodingType.Base64 });
+        setPlayingPreview(true);
         await playUri(tmp);
       }
     } catch (e) { setStatus(`Preview error: ${String(e)}`); }
@@ -1109,7 +1114,7 @@ export default function App() {
             })().catch(() => {});
           }}
         >
-          <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />
+          {!playingPreview && <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />}
           {!!editText && (() => {
             const words = editText.trim().split(/\s+/).filter(Boolean);
             const totalChars = words.join('').length;
@@ -1137,7 +1142,10 @@ export default function App() {
               <Text style={s.playBtnText}>✂▶</Text>
             </TouchableOpacity>
             <View style={[s.progressTrack, { backgroundColor: '#0a1929' }]}>
-              {canPlay && duration > 0 && (
+              {playingPreview && (
+                <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
+              )}
+              {canPlay && !playingPreview && (
                 <View pointerEvents="none" style={{
                   position: 'absolute', top: 0, bottom: 0,
                   left:  `${Math.min(cutIn!  / duration * 100, 100)}%` as any,
@@ -1145,7 +1153,7 @@ export default function App() {
                   backgroundColor: 'rgba(239,83,80,0.55)',
                 }} />
               )}
-              <Text pointerEvents="none" style={{ color: canPlay ? C.text : C.muted, fontSize: 11, paddingLeft: 8, paddingTop: 22 }}>
+              <Text pointerEvents="none" style={{ position: 'absolute', bottom: 4, left: 8, color: canPlay ? C.text : C.muted, fontSize: 11 }}>
                 {canPlay
                   ? `${fmtTime(cutIn!)} → ${fmtTime(cutOut!)}   −${fmtTime(cutOut! - cutIn!)}`
                   : 'set In & Out to enable'}
