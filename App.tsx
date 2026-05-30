@@ -507,12 +507,13 @@ export default function App() {
     } catch (e) { setStatus(`Folder error: ${String(e)}`); }
   };
 
-  // Share: opens Android share sheet (Gmail, WhatsApp, OneDrive, etc.)
   const doShare = async () => {
     const wb        = workbookRef.current;
     const localPath = xlsxLocalRef.current;
     if (!wb || !localPath) { setStatus('Nothing to share yet.'); return; }
-    const exportName = configRef.current.xlsxName ?? 'export.xlsx';
+    const xlsxName  = configRef.current.xlsxName ?? 'export.xlsx';
+    const trimUris  = Object.entries(audioMapRef.current)
+      .filter(([name]) => name.endsWith('_trim.wav'));
 
     if (Platform.OS === 'web') {
       try {
@@ -520,23 +521,55 @@ export default function App() {
         const blob  = new Blob([array], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url   = URL.createObjectURL(blob);
         const link  = document.createElement('a');
-        link.href = url; link.download = exportName; link.click();
+        link.href = url; link.download = xlsxName; link.click();
         URL.revokeObjectURL(url);
         setStatus('Downloaded ✓');
       } catch (e) { setStatus(`Download error: ${String(e)}`); }
       return;
     }
 
+    setLoading(true);
     try {
-      const base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', compression: true });
-      await LegacyFS.writeAsStringAsync(localPath, base64, { encoding: LegacyFS.EncodingType.Base64 });
-      await Sharing.shareAsync(localPath, {
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        dialogTitle: 'Share spreadsheet',
-        UTI: 'com.microsoft.excel.xlsx',
-      });
-      setStatus('Shared ✓');
+      // Always save Excel to local path first
+      const xlsxB64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', compression: true });
+      await LegacyFS.writeAsStringAsync(localPath, xlsxB64, { encoding: LegacyFS.EncodingType.Base64 });
+
+      if (trimUris.length === 0) {
+        // No trim files — share Excel only (original behaviour)
+        await Sharing.shareAsync(localPath, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Share spreadsheet',
+          UTI: 'com.microsoft.excel.xlsx',
+        });
+        setStatus('Shared ✓');
+        return;
+      }
+
+      // Build zip: Excel + all _trim.wav files
+      setStatus(`Building zip (${trimUris.length} trim file${trimUris.length > 1 ? 's' : ''})…`);
+      const xlsxBytes = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+      const zipFiles: { name: string; data: Uint8Array }[] = [
+        { name: xlsxName, data: new Uint8Array(xlsxBytes) },
+      ];
+      for (const [name, uri] of trimUris) {
+        try {
+          const resp = await fetch(uri);
+          const buf  = await resp.arrayBuffer();
+          zipFiles.push({ name, data: new Uint8Array(buf) });
+        } catch { /* skip unreadable files */ }
+      }
+      const zipData  = buildZip(zipFiles);
+      const zipName  = xlsxName.replace(/\.[^.]+$/, '') + '_export.zip';
+      const zipPath  = (LegacyFS.documentDirectory ?? '') + zipName;
+      const u8 = zipData;
+      let bin = ''; const ch = 8192;
+      for (let j = 0; j < u8.length; j += ch)
+        bin += String.fromCharCode(...u8.subarray(j, Math.min(j + ch, u8.length)));
+      await LegacyFS.writeAsStringAsync(zipPath, btoa(bin), { encoding: LegacyFS.EncodingType.Base64 });
+      await Sharing.shareAsync(zipPath, { mimeType: 'application/zip', dialogTitle: 'Export transcriptions' });
+      setStatus(`Shared zip (${zipFiles.length} files) ✓`);
     } catch (e) { setStatus(`Share error: ${String(e)}`); }
+    finally { setLoading(false); }
   };
 
   const persistEntry = async (i: number, text: string) => {
@@ -1345,6 +1378,49 @@ export default function App() {
   );
 }
 
+function crc32(data: Uint8Array): number {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    c ^= data[i];
+    for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xEDB88320 : 0);
+  }
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Array {
+  const enc = new TextEncoder();
+  const locals: Uint8Array[] = [];
+  const centrals: Uint8Array[] = [];
+  let off = 0;
+  for (const f of files) {
+    const nb = enc.encode(f.name);
+    const crc = crc32(f.data);
+    const sz  = f.data.length;
+    const lh  = new Uint8Array(30 + nb.length);
+    const lv  = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, sz, true); lv.setUint32(22, sz, true);
+    lv.setUint16(26, nb.length, true); lh.set(nb, 30);
+    const ch = new Uint8Array(46 + nb.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, sz, true); cv.setUint32(24, sz, true);
+    cv.setUint16(28, nb.length, true); cv.setUint32(42, off, true); ch.set(nb, 46);
+    locals.push(lh, f.data); centrals.push(ch);
+    off += lh.length + sz;
+  }
+  const cdSize = centrals.reduce((s, c) => s + c.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev   = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true); ev.setUint32(12, cdSize, true); ev.setUint32(16, off, true);
+  const parts = [...locals, ...centrals, eocd];
+  const total = parts.reduce((s, p) => s + p.length, 0);
+  const out = new Uint8Array(total); let pos = 0;
+  for (const p of parts) { out.set(p, pos); pos += p.length; }
+  return out;
+}
+
 function insertXlsxRowAfter(ws: XLSX.WorkSheet, afterRow: number, col0: string, col1: string) {
   const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
   for (let r = range.e.r; r > afterRow; r--)
@@ -1408,8 +1484,28 @@ function cutWavBuffer(buffer: ArrayBuffer, inMs: number, outMs: number): ArrayBu
   nb.set(new Uint8Array(buffer, 0, dataOff));
   nv.setUint32(4,          newBuf.byteLength - 8, true);
   nv.setUint32(dataOff - 4, newDataSize,           true);
-  nb.set(new Uint8Array(buffer, dataOff, inByte),               dataOff);
-  nb.set(new Uint8Array(buffer, dataOff + outByte, dataSize - outByte), dataOff + inByte);
+  nb.set(new Uint8Array(buffer, dataOff, inByte),                        dataOff);
+  nb.set(new Uint8Array(buffer, dataOff + outByte, dataSize - outByte),  dataOff + inByte);
+
+  // 5ms crossfade at splice point to eliminate click (16-bit PCM only)
+  if (bps === 16) {
+    const fadeSamples = Math.min(
+      Math.floor(0.005 * sampleRate),
+      Math.floor(Math.min(inByte, dataSize - outByte) / blockAlign / 2),
+    );
+    const nv2 = new DataView(newBuf);
+    for (let s = 0; s < fadeSamples; s++) {
+      const fadeOut = (fadeSamples - 1 - s) / fadeSamples;
+      const fadeIn  = s / fadeSamples;
+      for (let ch = 0; ch < numCh; ch++) {
+        const oOut = dataOff + inByte - (fadeSamples - s) * blockAlign + ch * 2;
+        const oIn  = dataOff + inByte + s * blockAlign + ch * 2;
+        if (oOut >= dataOff) nv2.setInt16(oOut, Math.round(nv2.getInt16(oOut, true) * fadeOut), true);
+        if (oIn  < dataOff + newDataSize) nv2.setInt16(oIn,  Math.round(nv2.getInt16(oIn,  true) * fadeIn),  true);
+      }
+    }
+  }
+
   return newBuf;
 }
 
