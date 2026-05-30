@@ -1139,6 +1139,14 @@ export default function App() {
           onStartShouldSetResponder={() => true}
           onResponderGrant={(e) => {
             (async () => {
+              if (cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut!) {
+                await doPreview(); return;
+              }
+              if (cutMode) {
+                const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
+                if (canCut) await doPreview(); else await playCurrentEntry();
+                return;
+              }
               if (!soundRef.current || duration === 0) {
                 await playCurrentEntry();
                 return;
