@@ -1251,7 +1251,7 @@ export default function App() {
       })()}
 
       {/* Swipe strip with arrow buttons on edges */}
-      <View style={s.swipeStrip} {...swipeResponder.panHandlers}>
+      {!cutMode && <View style={s.swipeStrip} {...swipeResponder.panHandlers}>
         <TouchableOpacity style={s.swipeArrowBtn} onPress={goPrev}>
           <Text style={s.swipeArrowText}>◀</Text>
         </TouchableOpacity>
@@ -1259,10 +1259,10 @@ export default function App() {
         <TouchableOpacity style={s.swipeArrowBtn} onPress={goNext}>
           <Text style={s.swipeArrowText}>▶</Text>
         </TouchableOpacity>
-      </View>
+      </View>}
 
       {/* Find / Go / Replace on one row */}
-      <View style={s.filterJumpRow}>
+      {!cutMode && <View style={s.filterJumpRow}>
         <Text style={s.muted}>Find:</Text>
         <TextInput
           style={s.findInput}
@@ -1293,7 +1293,7 @@ export default function App() {
           onSubmitEditing={applyReplaceAll}
           placeholderTextColor={C.muted}
         />
-      </View>
+      </View>}
 
       <Modal visible={sheetModal} transparent animationType="fade"
              onRequestClose={() => setSheetModal(false)}>
