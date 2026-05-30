@@ -175,7 +175,7 @@ export default function App() {
   const cutPreviewRef        = useRef(false);
   const cutInRef             = useRef<number | null>(null);
   const cutOutRef            = useRef<number | null>(null);
-  const cutUndoRef           = useRef<{ insertedIdx: number } | null>(null);
+  const cutUndoRef           = useRef<{ globalIdx: number; oldFilename: string } | null>(null);
 
   const navRef = useRef({ goNext: () => {}, goPrev: () => {} });
   const swipeResponder = useRef(
@@ -684,6 +684,47 @@ export default function App() {
   const addLog = (msg: string) =>
     setLogLines(prev => [`${logTime()}  ${msg}`, ...prev].slice(0, 50));
 
+  const doPreview = async () => {
+    const entry = entriesRef.current[idxRef.current];
+    if (!entry || cutIn === null || cutOut === null || cutIn >= cutOut) {
+      setStatus('Set In and Out points first.'); return;
+    }
+    const uri = findAudioUri(entry.filename, audioMapRef.current);
+    if (!uri) { setStatus('Audio not found.'); return; }
+    setLoading(true);
+    try {
+      const buffer = await (await fetch(uri)).arrayBuffer();
+      if (Platform.OS === 'web') {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioCtx() as AudioContext;
+        const dec = await ctx.decodeAudioData(buffer.slice(0));
+        const sr = dec.sampleRate, inS = Math.floor(cutIn / 1000 * sr), outS = Math.floor(cutOut / 1000 * sr);
+        const nb = ctx.createBuffer(dec.numberOfChannels, dec.length - (outS - inS), sr);
+        for (let ch = 0; ch < dec.numberOfChannels; ch++) {
+          const s = dec.getChannelData(ch), d = nb.getChannelData(ch);
+          d.set(s.subarray(0, inS), 0); d.set(s.subarray(outS), inS);
+        }
+        const blob = new Blob([audioBufferToWav(nb)], { type: 'audio/wav' });
+        const url  = URL.createObjectURL(blob);
+        await playUri(url);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } else {
+        if (!entry.filename.toLowerCase().endsWith('.wav')) {
+          setStatus('Preview only supports WAV on Android.'); return;
+        }
+        const newBuf = cutWavBuffer(buffer, cutIn, cutOut);
+        const u8 = new Uint8Array(newBuf);
+        let bin = ''; const ch = 8192;
+        for (let j = 0; j < u8.length; j += ch)
+          bin += String.fromCharCode(...u8.subarray(j, Math.min(j + ch, u8.length)));
+        const tmp = LegacyFS.documentDirectory + '_preview_cut.wav';
+        await LegacyFS.writeAsStringAsync(tmp, btoa(bin), { encoding: LegacyFS.EncodingType.Base64 });
+        await playUri(tmp);
+      }
+    } catch (e) { setStatus(`Preview error: ${String(e)}`); }
+    finally { setLoading(false); }
+  };
+
   const markIn = async () => {
     const st  = soundRef.current ? await soundRef.current.getStatusAsync() : null;
     const pos = st && st.isLoaded ? st.positionMillis : position;
@@ -794,40 +835,9 @@ export default function App() {
         const newFileUri = await LegacyFS.StorageAccessFramework.createFileAsync(folderUri, saveName, 'audio/wav');
         await LegacyFS.StorageAccessFramework.writeAsStringAsync(newFileUri, b64, { encoding: LegacyFS.EncodingType.Base64 });
         audioMapRef.current[saveName.toLowerCase()] = newFileUri;
-
-        // Insert new entry row right after current one
-        const cleanedText = entry.text.replace(/\*f\*/gi, '').replace(/\s{2,}/g, ' ').trim() || entry.text;
-        const wb2 = workbookRef.current!;
-        const ws2 = wb2.Sheets[curSheetRef.current!];
-        const rows2 = XLSX.utils.sheet_to_json<unknown[]>(ws2, { header: 1 });
-        let di2 = 0, insertAfterRow = -1;
-        for (let r = 0; r < rows2.length; r++) {
-          const row = rows2[r] as unknown[];
-          if (Array.isArray(row) && row.length >= 2 && row[0] && row[1]) {
-            if (di2 === i) { insertAfterRow = r; break; }
-            di2++;
-          }
-        }
-        if (insertAfterRow >= 0) insertXlsxRowAfter(ws2, insertAfterRow, cleanedText, saveName);
-
-        const newEntry: Entry = { text: cleanedText, filename: saveName };
-        allEntriesRef.current = [...allEntriesRef.current.slice(0, i + 1), newEntry, ...allEntriesRef.current.slice(i + 1)];
-        entriesRef.current    = allEntriesRef.current;
-        const fi2 = filteredIndicesRef.current.map(x => x > i ? x + 1 : x);
-        const pos2 = fi2.indexOf(i);
-        if (pos2 >= 0) fi2.splice(pos2 + 1, 0, i + 1);
-        filteredIndicesRef.current = fi2;
-        setEntries([...entriesRef.current]);
-        setFilteredCount(fi2.length);
-
-        cutUndoRef.current = { insertedIdx: i + 1 };
-
-        const lp2 = xlsxLocalRef.current;
-        if (lp2) {
-          const b64x = XLSX.write(wb2, { type: 'base64', bookType: 'xlsx', compression: true });
-          await LegacyFS.writeAsStringAsync(lp2, b64x, { encoding: LegacyFS.EncodingType.Base64 });
-        }
-        setStatus(`Added entry: ${saveName} ✓  (↩ to undo)`);
+        cutUndoRef.current = { globalIdx: i, oldFilename: entry.filename };
+        await persistFilename(i, saveName);
+        setStatus(`Saved as ${saveName} ✓  (↩ to undo)`);
       }
 
       addLog(`✂ ${entry.filename} → ${saveName}: removed ${fmtTime(cutOut - cutIn)} @ ${fmtTime(cutIn)}`);
@@ -902,43 +912,14 @@ export default function App() {
   };
 
   const applyUndo = async () => {
-    // Cut undo: remove the inserted _trim entry
+    // Cut undo: revert filename back to original
     const cutSnap = cutUndoRef.current;
     if (cutSnap) {
       cutUndoRef.current = null;
-      const { insertedIdx } = cutSnap;
-      const removedName = allEntriesRef.current[insertedIdx]?.filename ?? '';
-      delete audioMapRef.current[removedName.toLowerCase()];
-
-      const wb2   = workbookRef.current;
-      const sheet2 = curSheetRef.current;
-      if (wb2 && sheet2) {
-        const ws2   = wb2.Sheets[sheet2];
-        const rows2 = XLSX.utils.sheet_to_json<unknown[]>(ws2, { header: 1 });
-        let di2 = 0, removeRow = -1;
-        for (let r = 0; r < rows2.length; r++) {
-          const row = rows2[r] as unknown[];
-          if (Array.isArray(row) && row.length >= 2 && row[0] && row[1]) {
-            if (di2 === insertedIdx) { removeRow = r; break; }
-            di2++;
-          }
-        }
-        if (removeRow >= 0) removeXlsxRow(ws2, removeRow);
-        const lp2 = xlsxLocalRef.current;
-        if (lp2 && Platform.OS !== 'web') {
-          const b64x = XLSX.write(wb2, { type: 'base64', bookType: 'xlsx', compression: true });
-          await LegacyFS.writeAsStringAsync(lp2, b64x, { encoding: LegacyFS.EncodingType.Base64 });
-        }
-      }
-
-      allEntriesRef.current = [...allEntriesRef.current.slice(0, insertedIdx), ...allEntriesRef.current.slice(insertedIdx + 1)];
-      entriesRef.current    = allEntriesRef.current;
-      const fi2 = filteredIndicesRef.current.filter(x => x !== insertedIdx).map(x => x > insertedIdx ? x - 1 : x);
-      filteredIndicesRef.current = fi2;
-      setEntries([...entriesRef.current]);
-      setFilteredCount(fi2.length);
-      setStatus(`Undo: removed ${removedName} ✓`);
-      addLog(`Undo cut: removed ${removedName}`);
+      delete audioMapRef.current[entriesRef.current[cutSnap.globalIdx]?.filename.toLowerCase() ?? ''];
+      await persistFilename(cutSnap.globalIdx, cutSnap.oldFilename);
+      setStatus(`Cut undone — reverted to ${cutSnap.oldFilename} ✓`);
+      addLog(`Undo cut: restored ${cutSnap.oldFilename}`);
       await playCurrentEntry();
       return;
     }
@@ -1129,7 +1110,7 @@ export default function App() {
                 <Text style={s.nudgeBtnText}>▶</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.cutPreviewBtn, !canAct && { opacity: 0.35 }]}
-                onPress={() => playCurrentEntry(undefined, undefined, undefined, true)}>
+                onPress={doPreview}>
                 <Text style={s.cutMarkText}>▶ Preview</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.cutApplyBtn, !canAct && { opacity: 0.35 }]} onPress={doCutAudio}>
