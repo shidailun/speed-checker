@@ -33,12 +33,15 @@ const C = {
 
 type Entry = { text: string; filename: string };
 
+type RecentFile = { name: string; localPath: string };
+
 interface AppConfig {
   xlsxLocalPath?:   string;
   xlsxName?:        string;
   audioFolderUri?:  string;
   lastSheet?:       string;
   lastIdx?:         number;
+  recentFiles?:     RecentFile[];
 }
 
 const CONFIG_PATH = LegacyFS.documentDirectory
@@ -150,6 +153,8 @@ export default function App() {
   const [aboutModal,    setAboutModal]    = useState(false);
   const [logLines,      setLogLines]      = useState<string[]>([]);
   const [cutMode,       setCutMode]       = useState(false);
+  const [recentModal,   setRecentModal]   = useState(false);
+  const [recentFiles,   setRecentFiles]   = useState<RecentFile[]>([]);
   const [cutIn,         setCutIn]         = useState<number | null>(null);
   const [cutOut,        setCutOut]        = useState<number | null>(null);
   const [cutInText,     setCutInText]     = useState('');
@@ -212,6 +217,7 @@ export default function App() {
     (async () => {
       const cfg = await readConfig();
       configRef.current = cfg;
+      if (cfg.recentFiles?.length) setRecentFiles(cfg.recentFiles);
 
       let audioMap: Record<string, string> = {};
       if (cfg.audioFolderUri && Platform.OS !== 'web') {
@@ -418,6 +424,39 @@ export default function App() {
     if (speedHoldIntervalRef.current) { clearInterval(speedHoldIntervalRef.current); speedHoldIntervalRef.current = null; }
   };
 
+  const saveRecent = (name: string, localPath: string) => {
+    const updated = [{ name, localPath }, ...(configRef.current.recentFiles ?? []).filter(r => r.localPath !== localPath)].slice(0, 4);
+    configRef.current = { ...configRef.current, recentFiles: updated };
+    writeConfig(configRef.current);
+    setRecentFiles(updated);
+  };
+
+  const loadFromRecent = async (r: RecentFile) => {
+    setRecentModal(false);
+    try {
+      const info = await LegacyFS.getInfoAsync(r.localPath);
+      if (!info.exists) { setStatus(`File not found: ${r.name}`); return; }
+      setStatus(`Loading ${r.name}…`);
+      const wb = await fetchWorkbook(r.localPath);
+      workbookRef.current = wb;
+      xlsxLocalRef.current = r.localPath;
+      setXlsxLabel(r.name);
+      const cfg = { ...configRef.current, xlsxLocalPath: r.localPath, xlsxName: r.name };
+      configRef.current = cfg; writeConfig(cfg);
+      const detected = detectSheets(wb);
+      setSheets(detected);
+      if (detected.length === 0) {
+        setStatus('No matching sheets found.');
+      } else if (detected.length === 1) {
+        loadSheet(detected[0], wb, audioMapRef.current);
+      } else {
+        const resume = cfg.lastSheet && detected.includes(cfg.lastSheet) ? cfg.lastSheet : null;
+        if (resume) loadSheet(resume, wb, audioMapRef.current);
+        else setSheetModal(true);
+      }
+    } catch (e) { setStatus(`Error loading ${r.name}: ${String(e)}`); }
+  };
+
   const pickExcel = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -440,6 +479,7 @@ export default function App() {
         const base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', compression: true });
         await LegacyFS.writeAsStringAsync(localPath, base64, { encoding: LegacyFS.EncodingType.Base64 });
         xlsxLocalRef.current = localPath;
+        saveRecent(fileName, localPath);
         const cfg: AppConfig = { ...configRef.current, xlsxLocalPath: localPath, xlsxName: fileName };
         configRef.current = cfg; writeConfig(cfg);
       } else {
@@ -1069,7 +1109,7 @@ export default function App() {
       <StatusBar style="light" />
 
       <View style={s.row}>
-        <Btn label="Excel"  onPress={pickExcel}       bg="#4fc3f7" fg={C.bg} />
+        <Btn label="Excel"  onPress={() => recentFiles.length > 0 ? setRecentModal(true) : pickExcel()} bg="#4fc3f7" fg={C.bg} />
         <Btn label="Audio"  onPress={pickAudioFolder} bg="#81d4fa" fg={C.bg} />
         <Btn label="Share"  onPress={doShare}         bg="#01579b" fg="#fff" />
         <TouchableOpacity style={s.aboutBtn} onPress={() => setAboutModal(true)}>
@@ -1301,6 +1341,26 @@ export default function App() {
           placeholderTextColor={C.muted}
         />
       </View>}
+
+      <Modal visible={recentModal} transparent animationType="fade"
+             onRequestClose={() => setRecentModal(false)}>
+        <View style={s.overlay}>
+          <View style={s.modalBox}>
+            <Text style={s.modalTitle}>Recent Files</Text>
+            <ScrollView>
+              {recentFiles.map((r, i) => (
+                <TouchableOpacity key={i} style={s.sheetItem} onPress={() => loadFromRecent(r)}>
+                  <Text style={s.sheetItemText}>{r.name}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={[s.sheetItem, { marginTop: 6 }]} onPress={() => { setRecentModal(false); pickExcel(); }}>
+                <Text style={[s.sheetItemText, { color: C.accent }]}>Pick new file…</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            <Btn label="Cancel" onPress={() => setRecentModal(false)} bg={C.red} />
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={sheetModal} transparent animationType="fade"
              onRequestClose={() => setSheetModal(false)}>
