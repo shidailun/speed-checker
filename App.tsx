@@ -1140,7 +1140,7 @@ export default function App() {
       <View style={s.progressRow}>
         <TouchableOpacity style={s.playBtn} onPress={() => {
           const canCut = cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut!;
-          if (canCut) doPreview(); else playCurrentEntry();
+          if (canCut) doPreview(Math.max(0, cutIn! - 1000)); else playCurrentEntry();
         }}>
           <Text style={s.playBtnText}>{playing ? '▶▶' : (cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut! ? '✂▶' : '▶')}</Text>
         </TouchableOpacity>
@@ -1156,32 +1156,12 @@ export default function App() {
               if (cutMode) {
                 const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
                 if (canCut) {
-                  const origDur2 = origDurationRef.current || duration;
-                  const ratio2   = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidthRef.current));
-                  const tapMs    = Math.floor(ratio2 * origDur2);
-                  // Map tap position in original → position in preview
-                  let previewMs  = tapMs;
-                  if (tapMs >= cutIn! && tapMs < cutOut!) previewMs = cutIn!;
-                  else if (tapMs >= cutOut!) previewMs = tapMs - (cutOut! - cutIn!);
-                  await doPreview(Math.max(0, previewMs));
+                  // Tap plays preview from start of zoom window (1s before cut-in)
+                  const zoomStart = Math.max(0, cutIn! - 1000);
+                  await doPreview(zoomStart);
                   return;
                 }
-                // No marks — seek in original using origDuration
-                const origDur = origDurationRef.current || duration;
-                if (!soundRef.current || origDur === 0) { await playCurrentEntry(); return; }
-                const ratio  = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidthRef.current));
-                const seekMs = Math.floor(ratio * origDur);
-                // If preview is loaded, reload original at seek position
-                if (currentUriRef.current?.endsWith('_preview_cut.wav')) {
-                  const entry = entriesRef.current[idxRef.current];
-                  const uri   = entry ? findAudioUri(entry.filename, audioMapRef.current) : null;
-                  if (uri) { setStatus(entry!.filename); await playUri(uri); if (soundRef.current) await soundRef.current.setPositionAsync(seekMs); }
-                } else {
-                  await soundRef.current.setPositionAsync(seekMs);
-                  const st = await soundRef.current.getStatusAsync();
-                  if (st.isLoaded && !st.isPlaying) { await soundRef.current.playAsync(); setPlaying(true); }
-                }
-                return;
+                // No marks — seek normally
               }
               if (!soundRef.current || duration === 0) {
                 await playCurrentEntry();
@@ -1198,27 +1178,47 @@ export default function App() {
             })().catch(() => {});
           }}
         >
-          <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />
-          {cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut! && duration > 0 && (
-            <View pointerEvents="none" style={{
-              position: 'absolute', top: 0, bottom: 0,
-              left:  `${Math.min(cutIn  / duration * 100, 100)}%` as any,
-              width: `${Math.min((cutOut! - cutIn) / duration * 100, 100)}%` as any,
-              backgroundColor: 'rgba(239,83,80,0.45)',
-            }} />
-          )}
-          {!!editText && (() => {
-            const words = editText.trim().split(/\s+/).filter(Boolean);
-            const totalChars = words.join('').length;
-            const fontSize = Math.max(6, Math.min(10, Math.floor((trackWidthRef.current * 0.85) / Math.max(1, totalChars * 0.6))));
+          {cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut! ? (() => {
+            const PADDING  = 1000;
+            const origDur  = origDurationRef.current || duration;
+            const zs       = Math.max(0, cutIn! - PADDING);
+            const ze       = Math.min(origDur > 0 ? origDur : cutOut! + PADDING, cutOut! + PADDING);
+            const zDur     = Math.max(1, ze - zs);
+            const toZ      = (ms: number) => `${Math.max(0, Math.min(100, (ms - zs) / zDur * 100))}%`;
+            const isPreview = currentUriRef.current?.endsWith('_preview_cut.wav') ?? false;
+            const posOrig  = isPreview
+              ? (position < cutIn! ? position : position + (cutOut! - cutIn!))
+              : position;
             return (
-              <View style={s.progressWords} pointerEvents="none">
-                {words.map((word, i) => (
-                  <Text key={i} style={[s.progressWordText, { fontSize }]}>{word}</Text>
-                ))}
-              </View>
+              <>
+                <View style={[s.progressFill, { width: toZ(posOrig) as any }]} />
+                <View pointerEvents="none" style={{
+                  position: 'absolute', top: 0, bottom: 0,
+                  left:  toZ(cutIn!) as any,
+                  width: `${Math.min((cutOut! - cutIn!) / zDur * 100, 100)}%` as any,
+                  backgroundColor: 'rgba(239,83,80,0.45)',
+                }} />
+                <Text pointerEvents="none" style={{ position: 'absolute', bottom: 2, left: 4,  color: C.muted, fontSize: 9 }}>{fmtTime(zs)}</Text>
+                <Text pointerEvents="none" style={{ position: 'absolute', bottom: 2, right: 4, color: C.muted, fontSize: 9 }}>{fmtTime(ze)}</Text>
+              </>
             );
-          })()}
+          })() : (
+            <>
+              <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />
+              {!!editText && (() => {
+                const words = editText.trim().split(/\s+/).filter(Boolean);
+                const totalChars = words.join('').length;
+                const fontSize = Math.max(6, Math.min(10, Math.floor((trackWidthRef.current * 0.85) / Math.max(1, totalChars * 0.6))));
+                return (
+                  <View style={s.progressWords} pointerEvents="none">
+                    {words.map((word, i) => (
+                      <Text key={i} style={[s.progressWordText, { fontSize }]}>{word}</Text>
+                    ))}
+                  </View>
+                );
+              })()}
+            </>
+          )}
         </View>
       </View>
 
