@@ -1219,11 +1219,11 @@ export default function App() {
               }}
             >
               <View style={[s.progressFill, { width: `${bottomDuration > 0 ? Math.min(bottomPosition / bottomDuration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
-              {canCut && activeBand !== 'bottom' && topDuration > 0 && (
+              {canCut && activeBand !== 'bottom' && (topDuration || bottomDuration) > 0 && (
                 <View pointerEvents="none" style={{
                   position: 'absolute', top: 0, bottom: 0,
-                  left:  `${Math.min(cutIn!  / topDuration * 100, 100)}%` as any,
-                  width: `${Math.min((cutOut! - cutIn!) / topDuration * 100, 100)}%` as any,
+                  left:  `${Math.min(cutIn!  / (topDuration || bottomDuration) * 100, 100)}%` as any,
+                  width: `${Math.min((cutOut! - cutIn!) / (topDuration || bottomDuration) * 100, 100)}%` as any,
                   backgroundColor: 'rgba(239,83,80,0.55)',
                 }} />
               )}
