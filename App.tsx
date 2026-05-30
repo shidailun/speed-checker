@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   PanResponder,
   Platform,
+  Alert,
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import * as DocumentPicker from 'expo-document-picker';
@@ -596,6 +597,55 @@ export default function App() {
       await LegacyFS.writeAsStringAsync(lp, base64, { encoding: LegacyFS.EncodingType.Base64 });
       setStatus(`Filename updated ✓  ${newFilename.trim()}`);
     } catch (e) { setStatus(`Save error: ${String(e)}`); }
+  };
+
+  const deleteEntry = async (i: number) => {
+    const entry = entriesRef.current[i];
+    if (!entry) return;
+    Alert.alert(
+      'Delete Entry',
+      `Remove "${entry.filename}" from the spreadsheet?\n\nThe audio file is NOT deleted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          setFilenameModal(false);
+          const wb    = workbookRef.current;
+          const sheet = curSheetRef.current;
+          if (!wb || !sheet) return;
+          const ws   = wb.Sheets[sheet];
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
+          let di = 0, removeRow = -1;
+          for (let r = 0; r < rows.length; r++) {
+            const row = rows[r] as unknown[];
+            if (Array.isArray(row) && row.length >= 2 && row[0] && row[1]) {
+              if (di === i) { removeRow = r; break; }
+              di++;
+            }
+          }
+          if (removeRow >= 0) removeXlsxRow(ws, removeRow);
+          const all = allEntriesRef.current;
+          allEntriesRef.current = [...all.slice(0, i), ...all.slice(i + 1)];
+          entriesRef.current    = allEntriesRef.current;
+          const fi = filteredIndicesRef.current.filter(x => x !== i).map(x => x > i ? x - 1 : x);
+          filteredIndicesRef.current = fi;
+          setEntries([...entriesRef.current]);
+          setFilteredCount(fi.length);
+          addLog(`Deleted entry: ${entry.filename}`);
+          const lp = xlsxLocalRef.current;
+          if (lp && Platform.OS !== 'web') {
+            const base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', compression: true });
+            try { await LegacyFS.writeAsStringAsync(lp, base64, { encoding: LegacyFS.EncodingType.Base64 }); }
+            catch (e) { setStatus(`Save error: ${String(e)}`); return; }
+          }
+          if (fi.length > 0) {
+            const nextDi = Math.min(displayIdxRef.current, fi.length - 1);
+            await gotoEntry(fi[nextDi]);
+          } else {
+            setEditText(''); setStatus('No entries remaining.');
+          }
+        }},
+      ],
+    );
   };
 
   const loadSheet = (
@@ -1202,6 +1252,9 @@ export default function App() {
                 <Btn label="Cancel"  onPress={() => setFilenameModal(false)} bg={C.red} />
                 <Btn label="Confirm" onPress={() => persistFilename(idxRef.current, editFilename)} bg={C.green} fg="#fff" />
               </View>
+              <TouchableOpacity style={s.deleteEntryBtn} onPress={() => deleteEntry(idxRef.current)}>
+                <Text style={s.deleteEntryText}>🗑 Delete this entry</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -1441,6 +1494,8 @@ const s = StyleSheet.create({
   logShareBtn:   { color: '#01579b', fontSize: 12, fontWeight: '700' },
   logScroll:     { maxHeight: 99, paddingHorizontal: 10 },
   logLine:       { color: C.muted, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', paddingVertical: 2 },
+  deleteEntryBtn:{ marginTop: 12, alignItems: 'center', padding: 10 },
+  deleteEntryText:{ color: C.red, fontSize: 13, fontWeight: '700' },
   aboutBtn:      { width: 44, height: 52, backgroundColor: C.surface, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   aboutBtnText:  { color: C.muted, fontSize: 18, fontWeight: '700' },
   aboutText:     { color: C.text, fontSize: 14, lineHeight: 22 },
