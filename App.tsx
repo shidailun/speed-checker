@@ -1414,9 +1414,8 @@ export default function App() {
             <ScrollView>
               <Text style={s.aboutText}>
                 An app for reviewing and editing audio transcriptions. Pick an Excel file first, then an audio folder — the folder name auto-selects the matching sheet in the Excel.{'\n\n'}
-                Tap the progress bar to seek or repeat. Speed 0.5x to 1.5x.{'\n\n'}
-                Find filters by sound position: p (anywhere), p- (word-start), -p (word-end), -p- (middle). Comma-separate for OR logic. Replace applies to all filtered entries. ↩ undoes the last bulk replace or cut.{'\n\n'}
-                Set In and Out with the ● buttons (nudge ◀▶ for precision, or type the exact second). The bar zooms into the cut region — tap or press ▶ to hear the preview starting 1 second before the cut. ✂ Cut saves the edited audio as filename_trim.wav alongside the original. ↩ reverts if needed. Share exports the Excel plus all trim files as a zip.{'\n\n'}
+                Tap the progress bar to seek or repeat. Speed 0.5x to 1.5x. Find filters by sound position: p (anywhere), p- (word-start), -p (word-end), -p- (middle). Comma-separate for OR logic. Replace applies to all filtered entries. ↩ undoes the last bulk replace or cut.{'\n\n'}
+                ✂ Scissors mode: Set In and Out with the ● buttons (nudge ◀▶ or type). The bar zooms into the cut region — tap or press ▶ to hear the preview starting 1 second before the cut. ✂ Cut saves the edited audio as filename_trim.wav alongside the original. ↩ reverts. Share exports the Excel plus all trim files as a zip.{'\n\n'}
                 Feedback: shidailun@gmail.com
               </Text>
             </ScrollView>
