@@ -1130,7 +1130,14 @@ export default function App() {
         {hasEntries && (
           <TouchableOpacity
             style={[s.undoBtn, cutMode && { backgroundColor: C.red }]}
-            onPress={() => setCutMode(m => !m)}
+            onPress={() => {
+              const next = !cutMode;
+              setCutMode(next);
+              if (next) {
+                speedRef.current = 0.75; setSpeed(0.75);
+                soundRef.current?.setRateAsync(0.75, false).catch(() => {});
+              }
+            }}
           >
             <Text style={s.speedBtnText}>✂</Text>
           </TouchableOpacity>
