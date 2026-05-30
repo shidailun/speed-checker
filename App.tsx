@@ -882,9 +882,13 @@ export default function App() {
         const b64 = btoa(bin);
         const folderUri = configRef.current.audioFolderUri;
         if (!folderUri) throw new Error('Audio folder not set — re-pick the audio folder.');
-        const newFileUri = await LegacyFS.StorageAccessFramework.createFileAsync(folderUri, saveName, 'audio/wav');
+        const trimLower = saveName.toLowerCase();
+        const existingUri = audioMapRef.current[trimLower];
+        const newFileUri = existingUri
+          ? existingUri
+          : await LegacyFS.StorageAccessFramework.createFileAsync(folderUri, saveName, 'audio/wav');
         await LegacyFS.StorageAccessFramework.writeAsStringAsync(newFileUri, b64, { encoding: LegacyFS.EncodingType.Base64 });
-        audioMapRef.current[saveName.toLowerCase()] = newFileUri;
+        audioMapRef.current[trimLower] = newFileUri;
         cutUndoRef.current = { globalIdx: i, oldFilename: entry.filename };
         await persistFilename(i, saveName);
         setStatus(`Saved as ${saveName} ✓  (↩ to undo)`);
