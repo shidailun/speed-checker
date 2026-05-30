@@ -895,8 +895,8 @@ export default function App() {
       }
 
       addLog(`✂ ${entry.filename} → ${saveName}: removed ${fmtTime(cutOut - cutIn)} @ ${fmtTime(cutIn)}`);
-      setCutIn(null);
-      setCutOut(null);
+      setCutIn(null); setCutInText('');
+      setCutOut(null); setCutOutText('');
       setCutMode(false);
       await playCurrentEntry();
     } catch (e) {
@@ -1076,7 +1076,7 @@ export default function App() {
         {hasEntries && (
           <TouchableOpacity
             style={[s.undoBtn, cutMode && { backgroundColor: C.red }]}
-            onPress={() => { setCutMode(m => !m); if (cutMode) { setCutIn(null); setCutOut(null); } }}
+            onPress={() => setCutMode(m => !m)}
           >
             <Text style={s.speedBtnText}>✂</Text>
           </TouchableOpacity>
@@ -1088,6 +1088,7 @@ export default function App() {
         <TouchableOpacity style={s.playBtn} onPress={() => playCurrentEntry()}>
           <Text style={s.playBtnText}>{playing ? '▶▶' : '▶'}</Text>
         </TouchableOpacity>
+        {cutMode && <Text style={s.bandLabel}>Original</Text>}
         <View
           style={s.progressTrack}
           onLayout={(e) => { trackWidthRef.current = e.nativeEvent.layout.width || 1; }}
@@ -1137,6 +1138,31 @@ export default function App() {
       </View>
 
       {cutMode && hasEntries && (() => {
+        const cutInOk  = cutIn  !== null;
+        const cutOutOk = cutOut !== null;
+        const canPlay  = cutInOk && cutOutOk && cutIn! < cutOut!;
+        return (
+          <View style={s.progressRow}>
+            <TouchableOpacity
+              style={[s.playBtn, { backgroundColor: canPlay ? '#1b5e20' : C.surface }]}
+              onPress={doPreview}
+              disabled={!canPlay}
+            >
+              <Text style={s.playBtnText}>✂▶</Text>
+            </TouchableOpacity>
+            <Text style={s.bandLabel}>Cut preview</Text>
+            <View style={[s.progressTrack, { backgroundColor: '#0d1f0d', justifyContent: 'center' }]}>
+              <Text style={{ color: C.muted, fontSize: 11, paddingLeft: 10 }}>
+                {canPlay
+                  ? `removes ${fmtTime(cutOut! - cutIn!)}  (${fmtTime(cutIn!)} → ${fmtTime(cutOut!)})`
+                  : 'set In & Out to enable'}
+              </Text>
+            </View>
+          </View>
+        );
+      })()}
+
+      {cutMode && hasEntries && (() => {
         const canAct = cutIn !== null && cutOut !== null && cutIn < cutOut;
         return (
           <>
@@ -1163,12 +1189,8 @@ export default function App() {
               <TouchableOpacity style={s.nudgeBtn} onPressIn={() => startNudgeHold('out', 10)} onPressOut={stopNudgeHold}>
                 <Text style={s.nudgeBtnText}>▶</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.cutPreviewBtn, !canAct && { opacity: 0.35 }]}
-                onPress={doPreview}>
-                <Text style={s.cutMarkText}>▶ Preview</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={[s.cutApplyBtn, !canAct && { opacity: 0.35 }]} onPress={doCutAudio}>
-                <Text style={s.cutMarkText}>✂ Cut</Text>
+                <Text style={s.cutMarkText}>✂  Cut</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -1503,13 +1525,14 @@ const s = StyleSheet.create({
   aboutBtn:      { width: 44, height: 52, backgroundColor: C.surface, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   aboutBtnText:  { color: C.muted, fontSize: 18, fontWeight: '700' },
   aboutText:     { color: C.text, fontSize: 14, lineHeight: 22 },
+  bandLabel:     { color: C.muted, fontSize: 10, width: 52, textAlign: 'center' },
   cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
   nudgeBtn:      { width: 28, height: 44, backgroundColor: C.surface, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
   nudgeBtnText:  { color: C.muted, fontSize: 12 },
   cutMarkBtn:    { height: 44, paddingHorizontal: 8, backgroundColor: '#b71c1c', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   cutTimeInput:  { width: 54, height: 44, backgroundColor: C.bg, color: C.text, borderRadius: 8, paddingHorizontal: 6, fontSize: 13, textAlign: 'center', borderWidth: 1, borderColor: C.red },
   cutPreviewBtn: { flex: 1, height: 44, paddingHorizontal: 6, backgroundColor: '#01579b', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  cutApplyBtn:   { flex: 1, height: 44, paddingHorizontal: 6, backgroundColor: C.red,    borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cutApplyBtn:   { flex: 2, height: 44, paddingHorizontal: 6, backgroundColor: C.red,    borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   cutMarkText:   { color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   cutRange:      { flex: 1, color: C.text, fontSize: 12, textAlign: 'center' },
 });
