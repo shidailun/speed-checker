@@ -361,8 +361,9 @@ export default function App() {
     setPlayingPreview(false);
   };
 
-  const playUri = async (uri: string) => {
+  const playUri = async (uri: string, routeToBottom = false) => {
     await stopSound();
+    if (routeToBottom) setPlayingPreview(true);
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
@@ -779,10 +780,8 @@ export default function App() {
       if (!entry) return;
       const uri = findAudioUri(entry.filename, audioMapRef.current);
       if (!uri) { setStatus(`Audio not found: ${entry.filename}`); return; }
-      await stopSound();
       setStatus(entry.filename);
-      setPlayingPreview(true);
-      await playUri(uri);
+      await playUri(uri, true);
     }
   };
 
@@ -808,8 +807,7 @@ export default function App() {
         }
         const blob = new Blob([audioBufferToWav(nb)], { type: 'audio/wav' });
         const url  = URL.createObjectURL(blob);
-        setPlayingPreview(true);
-        await playUri(url);
+        await playUri(url, true);
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       } else {
         if (!entry.filename.toLowerCase().endsWith('.wav')) {
@@ -822,8 +820,7 @@ export default function App() {
           bin += String.fromCharCode(...u8.subarray(j, Math.min(j + ch, u8.length)));
         const tmp = LegacyFS.documentDirectory + '_preview_cut.wav';
         await LegacyFS.writeAsStringAsync(tmp, btoa(bin), { encoding: LegacyFS.EncodingType.Base64 });
-        setPlayingPreview(true);
-        await playUri(tmp);
+        await playUri(tmp, true);
       }
     } catch (e) { setStatus(`Preview error: ${String(e)}`); }
     finally { setLoading(false); }
@@ -1193,9 +1190,9 @@ export default function App() {
             <TouchableOpacity style={[s.playBtn, { backgroundColor: '#01579b' }]} onPress={playBottomBand}>
               <Text style={s.playBtnText}>{canCut ? '✂▶' : '▶'}</Text>
             </TouchableOpacity>
-            <View style={[s.progressTrack, { backgroundColor: '#0a1929' }]}>
+            <View style={[s.progressTrack, { backgroundColor: '#01579b' }]}>
               {playingPreview && (
-                <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%`, backgroundColor: '#01579b' }]} />
+                <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%`, backgroundColor: C.accent }]} />
               )}
               {canCut && !playingPreview && duration > 0 && (
                 <View pointerEvents="none" style={{
