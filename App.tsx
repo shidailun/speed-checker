@@ -367,7 +367,7 @@ export default function App() {
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
-        { shouldPlay: true, rate: speedRef.current, shouldCorrectPitch: false, volume: 1.0, progressUpdateIntervalMillis: 50, positionMillis: startMs },
+        { shouldPlay: startMs === 0, rate: speedRef.current, shouldCorrectPitch: false, volume: 1.0, progressUpdateIntervalMillis: 50 },
         (s) => {
           if (!s.isLoaded) return;
           if (s.didJustFinish) setPlaying(false);
@@ -380,6 +380,10 @@ export default function App() {
         },
       );
       soundRef.current = sound;
+      if (startMs > 0) {
+        await sound.setPositionAsync(startMs);
+        await sound.playAsync();
+      }
       setPlaying(true);
     } catch (e) { setStatus(`Audio error: ${String(e)}`); }
   };
