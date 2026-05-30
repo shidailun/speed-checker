@@ -1088,7 +1088,6 @@ export default function App() {
         <TouchableOpacity style={s.playBtn} onPress={() => playCurrentEntry()}>
           <Text style={s.playBtnText}>{playing ? '▶▶' : '▶'}</Text>
         </TouchableOpacity>
-        {cutMode && <Text style={s.bandLabel}>Original</Text>}
         <View
           style={s.progressTrack}
           onLayout={(e) => { trackWidthRef.current = e.nativeEvent.layout.width || 1; }}
@@ -1111,17 +1110,6 @@ export default function App() {
           }}
         >
           <View style={[s.progressFill, { width: `${duration > 0 ? Math.min(position / duration * 100, 100) : 0}%` }]} />
-          {cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut && duration > 0 && (
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute', top: 0, bottom: 0,
-                left:  `${Math.min(cutIn  / duration * 100, 100)}%` as any,
-                width: `${Math.min((cutOut - cutIn) / duration * 100, 100)}%` as any,
-                backgroundColor: 'rgba(239,83,80,0.45)',
-              }}
-            />
-          )}
           {!!editText && (() => {
             const words = editText.trim().split(/\s+/).filter(Boolean);
             const totalChars = words.join('').length;
@@ -1138,23 +1126,28 @@ export default function App() {
       </View>
 
       {cutMode && hasEntries && (() => {
-        const cutInOk  = cutIn  !== null;
-        const cutOutOk = cutOut !== null;
-        const canPlay  = cutInOk && cutOutOk && cutIn! < cutOut!;
+        const canPlay = cutIn !== null && cutOut !== null && cutIn < cutOut!;
         return (
           <View style={s.progressRow}>
             <TouchableOpacity
-              style={[s.playBtn, { backgroundColor: canPlay ? '#1b5e20' : C.surface }]}
+              style={[s.playBtn, { backgroundColor: canPlay ? '#01579b' : C.surface }]}
               onPress={doPreview}
               disabled={!canPlay}
             >
               <Text style={s.playBtnText}>✂▶</Text>
             </TouchableOpacity>
-            <Text style={s.bandLabel}>Cut preview</Text>
-            <View style={[s.progressTrack, { backgroundColor: '#0d1f0d', justifyContent: 'center' }]}>
-              <Text style={{ color: C.muted, fontSize: 11, paddingLeft: 10 }}>
+            <View style={[s.progressTrack, { backgroundColor: '#0a1929' }]}>
+              {canPlay && duration > 0 && (
+                <View pointerEvents="none" style={{
+                  position: 'absolute', top: 0, bottom: 0,
+                  left:  `${Math.min(cutIn!  / duration * 100, 100)}%` as any,
+                  width: `${Math.min((cutOut! - cutIn!) / duration * 100, 100)}%` as any,
+                  backgroundColor: 'rgba(239,83,80,0.55)',
+                }} />
+              )}
+              <Text pointerEvents="none" style={{ color: canPlay ? C.text : C.muted, fontSize: 11, paddingLeft: 8, paddingTop: 22 }}>
                 {canPlay
-                  ? `removes ${fmtTime(cutOut! - cutIn!)}  (${fmtTime(cutIn!)} → ${fmtTime(cutOut!)})`
+                  ? `${fmtTime(cutIn!)} → ${fmtTime(cutOut!)}   −${fmtTime(cutOut! - cutIn!)}`
                   : 'set In & Out to enable'}
               </Text>
             </View>
@@ -1525,8 +1518,7 @@ const s = StyleSheet.create({
   aboutBtn:      { width: 44, height: 52, backgroundColor: C.surface, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   aboutBtnText:  { color: C.muted, fontSize: 18, fontWeight: '700' },
   aboutText:     { color: C.text, fontSize: 14, lineHeight: 22 },
-  bandLabel:     { color: C.muted, fontSize: 10, width: 52, textAlign: 'center' },
-  cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
+cutRow:        { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
   nudgeBtn:      { width: 28, height: 44, backgroundColor: C.surface, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
   nudgeBtnText:  { color: C.muted, fontSize: 12 },
   cutMarkBtn:    { height: 44, paddingHorizontal: 8, backgroundColor: '#b71c1c', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
