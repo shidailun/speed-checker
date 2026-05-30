@@ -177,6 +177,8 @@ export default function App() {
   const cutInRef             = useRef<number | null>(null);
   const cutOutRef            = useRef<number | null>(null);
   const cutUndoRef           = useRef<{ globalIdx: number; oldFilename: string } | null>(null);
+  const currentUriRef        = useRef<string | null>(null);
+  const origDurationRef      = useRef(0);
 
   const navRef = useRef({ goNext: () => {}, goPrev: () => {} });
   const swipeResponder = useRef(
@@ -361,6 +363,7 @@ export default function App() {
 
   const playUri = async (uri: string) => {
     await stopSound();
+    currentUriRef.current = uri;
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
@@ -369,7 +372,11 @@ export default function App() {
           if (!s.isLoaded) return;
           if (s.didJustFinish) setPlaying(false);
           setPosition(s.positionMillis ?? 0);
-          if (s.durationMillis) setDuration(s.durationMillis);
+          if (s.durationMillis) {
+            setDuration(s.durationMillis);
+            if (!currentUriRef.current?.endsWith('_preview_cut.wav'))
+              origDurationRef.current = s.durationMillis;
+          }
         },
       );
       soundRef.current = sound;
@@ -1141,6 +1148,26 @@ export default function App() {
             (async () => {
               if (cutMode && cutIn !== null && cutOut !== null && cutIn < cutOut!) {
                 await doPreview(); return;
+              }
+              if (cutMode) {
+                const canCut = cutIn !== null && cutOut !== null && cutIn < cutOut!;
+                if (canCut) { await doPreview(); return; }
+                // No marks — seek in original using origDuration
+                const origDur = origDurationRef.current || duration;
+                if (!soundRef.current || origDur === 0) { await playCurrentEntry(); return; }
+                const ratio  = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidthRef.current));
+                const seekMs = Math.floor(ratio * origDur);
+                // If preview is loaded, reload original at seek position
+                if (currentUriRef.current?.endsWith('_preview_cut.wav')) {
+                  const entry = entriesRef.current[idxRef.current];
+                  const uri   = entry ? findAudioUri(entry.filename, audioMapRef.current) : null;
+                  if (uri) { setStatus(entry!.filename); await playUri(uri); if (soundRef.current) await soundRef.current.setPositionAsync(seekMs); }
+                } else {
+                  await soundRef.current.setPositionAsync(seekMs);
+                  const st = await soundRef.current.getStatusAsync();
+                  if (st.isLoaded && !st.isPlaying) { await soundRef.current.playAsync(); setPlaying(true); }
+                }
+                return;
               }
               if (!soundRef.current || duration === 0) {
                 await playCurrentEntry();
